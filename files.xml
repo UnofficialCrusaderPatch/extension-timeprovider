@@ -1,0 +1,18 @@
+<module>
+  <project path="extension-timeprovider/extension-timeprovider/extension-timeprovider.vcxproj"/>
+  
+  <files> <!-- first without could be equal to build="Release"-->
+    <file src="extension-timeprovider/$(Configuration)/timeprovider.dll" />
+    <file src="*.lua" target="." />
+    <file src="*.yml" target="." />
+    <file src="locale" target="." />
+  </files>
+  
+  <files build="Debug">
+    <file src="extension-timeprovider/$(Configuration)/timeprovider.dll" />
+    <file src="extension-timeprovider/$(Configuration)/timeprovider.pdb" />
+    <file src="*.lua" target="." />
+    <file src="*.yml" target="." />
+    <file src="locale" target="." />
+  </files>
+</module>

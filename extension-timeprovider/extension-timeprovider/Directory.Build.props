@@ -1,0 +1,36 @@
+<Project>
+  <PropertyGroup>
+    <EnableCentralPackageVersions>true</EnableCentralPackageVersions>
+    <TargetFramework>native</TargetFramework>
+    <RestoreAdditionalProjectSources>
+      <!-- for lua dependency -->
+      https://api.nuget.org/v3/index.json;
+
+      <!-- for RuntimePatchingSystem. Not required
+      https://nuget.pkg.github.com/gynt/index.json;
+       -->
+
+    </RestoreAdditionalProjectSources>
+    <_NuGetTargetFallbackMoniker>$(_NuGetTargetFallbackMoniker);native,Version=v0.0</_NuGetTargetFallbackMoniker>
+  </PropertyGroup>
+
+  <ItemGroup>
+
+    <!-- Required in order to export a luaopen_mymodulename function -->
+    <PackageReference Include="lua" Version="5.4.6" />
+
+    <!-- Not strictly required -->
+    <PackageReference Include="UnofficialCrusaderPatch3" />
+
+    <!-- This is the way to include files if you would ever want to build a nuget file (not recommended), see the ucp.dll nuget spec for more examples
+    <Content Include="README.md">
+      <Pack>true</Pack>
+      <PackagePath>build</PackagePath>
+    </Content>
+    <Content Include="README.md">
+      <Pack>true</Pack>
+      <PackagePath>build\native\doc</PackagePath>
+    </Content>
+    -->
+  </ItemGroup>
+</Project>

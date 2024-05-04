@@ -1,0 +1,7 @@
+name: timeprovider
+display-name: Time Provider
+version: 0.0.1
+author: TheRedDaemon
+meta:
+  version: 1.0.0
+type: module
