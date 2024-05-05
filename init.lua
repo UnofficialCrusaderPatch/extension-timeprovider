@@ -24,6 +24,12 @@ exports.enable = function(self, moduleConfig, globalConfig)
   
   local requireTable = require("timeprovider.dll") -- loads the dll in memory and runs luaopen_timeprovider
   
+  self.GetFullNanosecondsTime = function(self, ...) return requireTable.lua_GetFullNanosecondsTime(...) end
+  self.GetNanosecondsTime = function(self, ...) return requireTable.lua_GetNanosecondsTime(...) end
+  self.GetMillisecondsTime = function(self, ...) return requireTable.lua_GetMillisecondsTime(...) end
+  
+  --[[ modify code ]]--
+  
   -- replaces the function ptr of timeGetTime with our own version
   core.writeCode(
     addrOfGetTime, -- normal 1.41 address: 0x0059e228

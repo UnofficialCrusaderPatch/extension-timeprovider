@@ -21,7 +21,10 @@
     <ClInclude Include="pch.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
-    <ClInclude Include="timeprovider.h">
+    <ClInclude Include="timeProviderHeader.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="timeProviderInternal.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>
