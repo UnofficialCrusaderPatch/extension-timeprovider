@@ -25,9 +25,14 @@ extern "C" __declspec(dllexport) DWORD __stdcall GetNanosecondsTime()
   return static_cast<DWORD>(GetFullNanosecondsTime());
 }
 
+extern "C" __declspec(dllexport) DWORD __stdcall GetMicrosecondsTime()
+{
+  return static_cast<DWORD>(GetFullNanosecondsTime() / 1000);
+}
+
 extern "C" __declspec(dllexport) DWORD __stdcall GetMillisecondsTime()
 {
-  return static_cast<DWORD>(GetFullNanosecondsTime() / 1000000); // TODO: make configurable
+  return static_cast<DWORD>(GetFullNanosecondsTime() / 1000000);
 }
 
 
@@ -54,6 +59,18 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetNanosecondsTime(lua_State * 
   }
 
   lua_pushinteger(L, GetNanosecondsTime());
+  return 1;
+}
+
+extern "C" __declspec(dllexport) int __cdecl lua_GetMicrosecondsTime(lua_State * L)
+{
+  int n{ lua_gettop(L) };    /* number of arguments */
+  if (n != 0)
+  {
+    luaL_error(L, "[timeprovider]: lua_GetMicrosecondsTime: Invalid number of args.");
+  }
+
+  lua_pushinteger(L, GetMicrosecondsTime());
   return 1;
 }
 
@@ -86,6 +103,8 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   lua_setfield(L, -2, "lua_GetFullNanosecondsTime");
   lua_pushcfunction(L, lua_GetNanosecondsTime);
   lua_setfield(L, -2, "lua_GetNanosecondsTime");
+  lua_pushcfunction(L, lua_GetMicrosecondsTime);
+  lua_setfield(L, -2, "lua_GetMicrosecondsTime");
   lua_pushcfunction(L, lua_GetMillisecondsTime);
   lua_setfield(L, -2, "lua_GetMillisecondsTime");
 

@@ -26,6 +26,7 @@ exports.enable = function(self, moduleConfig, globalConfig)
   
   self.GetFullNanosecondsTime = function(self, ...) return requireTable.lua_GetFullNanosecondsTime(...) end
   self.GetNanosecondsTime = function(self, ...) return requireTable.lua_GetNanosecondsTime(...) end
+  self.GetMicrosecondsTime = function(self, ...) return requireTable.lua_GetMicrosecondsTime(...) end
   self.GetMillisecondsTime = function(self, ...) return requireTable.lua_GetMillisecondsTime(...) end
   
   --[[ modify code ]]--
