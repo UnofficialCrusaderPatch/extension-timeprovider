@@ -87,6 +87,20 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetMillisecondsTime(lua_State *
 }
 
 
+/* time resolution increase helpers */
+
+static DWORD timeBeforeGameTicks{};
+
+static void __stdcall FakeSaveTimeBeforeGameTicks()
+{
+  timeBeforeGameTicks = GetMicrosecondsTime();
+}
+
+static DWORD __stdcall FakeGetTimeUsedForGameTicks()
+{
+  return GetMicrosecondsTime() - timeBeforeGameTicks;
+}
+
 // lua module load
 extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
 {
@@ -96,6 +110,13 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   lua_pushinteger(L, (DWORD) GetMillisecondsTime);
   lua_setfield(L, -2, "funcAddress_GetMillisecondsTime");
 
+  // call addresses to use
+  lua_pushinteger(L, (DWORD) GetMicrosecondsTime);
+  lua_setfield(L, -2, "funcAddress_GetMicrosecondsTime");
+  lua_pushinteger(L, (DWORD) FakeSaveTimeBeforeGameTicks);
+  lua_setfield(L, -2, "funcAddress_FakeSaveTimeBeforeGameTicks");
+  lua_pushinteger(L, (DWORD) FakeGetTimeUsedForGameTicks);
+  lua_setfield(L, -2, "funcAddress_FakeGetTimeUsedForGameTicks");
 
   // return lua funcs
 

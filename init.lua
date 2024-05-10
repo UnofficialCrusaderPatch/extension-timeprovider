@@ -12,6 +12,30 @@ local function getAddress(aob, errorMsg, modifierFunc)
   return modifierFunc(address)
 end
 
+local function createOffsetForRelativeCall(callAddress, funcAddress)
+  return funcAddress - callAddress - 5
+end
+
+local function getNumerator1000Addresses()
+  local numberOfExpectedAddresses = 6
+  local aob = "B8 E8 03 00 00 99"
+  local aobSize = 6
+  
+  local foundAddresses = {}
+  local currentMinAddress = 0x400000
+  for i = 1, numberOfExpectedAddresses do 
+    local foundAddress = core.AOBScan(aob, currentMinAddress) -- throws if not found
+    foundAddresses[i] = foundAddress + 1 -- plus 1 to get number address
+    currentMinAddress = foundAddress + aobSize
+  end
+
+  return foundAddresses
+end
+
+--[[
+  Placing a "E9 88000000" (JMP) uncaps the actions per frame, but this can actually break the performance.
+]]--
+
 exports.enable = function(self, moduleConfig, globalConfig)
 
   local addrOfGetTime = getAddress(
@@ -19,7 +43,34 @@ exports.enable = function(self, moduleConfig, globalConfig)
     "'timeProvider' was unable to find the address for the 'timeGetTime' function.",
     function(foundAddress) return core.readInteger(foundAddress + 2) end
   )
-
+  
+  local addrOfStopwatchStartGetTime = getAddress(
+    "FF ? ? ? ? ? 89 46 08 C7 46 04 01 00 00 00",
+    "'timeProvider' was unable to find the address for 'timeGetTime' in the Stopwatch 'start'-function."
+  )
+  
+  local addrOfStopwatchStopGetTime = getAddress(
+    "FF ? ? ? ? ? 89 46 0C 2B 46 08",
+    "'timeProvider' was unable to find the address for 'timeGetTime' in the Stopwatch 'stop'-function."
+  )
+  
+  local addrOfBeforeGameTicksGetTime = getAddress(
+    "FF D7 A3 CC 7D FE 01",
+    "'timeProvider' was unable to find the address for 'timeGetTime' before the game ticks loop."
+  )
+  
+  local addrOfAfterGameTicksGetTime = getAddress(
+    "FF D7 2B ? ? ? ? ? 33 D2",
+    "'timeProvider' was unable to find the address for 'timeGetTime' after the game ticks loop."
+  )
+  
+  local numerator1000Addresses = getNumerator1000Addresses()
+  
+  local addrOfMinus1000Numerator = getAddress(
+    "B8 18 FC FF FF 99",
+    "'timeProvider' was unable to find the address for the -1000 numerator.",
+    function(foundAddress) return foundAddress + 1 end
+  )
   --[[ load module ]]--
   
   local requireTable = require("timeprovider.dll") -- loads the dll in memory and runs luaopen_timeprovider
@@ -34,9 +85,53 @@ exports.enable = function(self, moduleConfig, globalConfig)
   -- replaces the function ptr of timeGetTime with our own version
   core.writeCode(
     addrOfGetTime, -- normal 1.41 address: 0x0059e228
-    {requireTable.funcAddress_GetTime}
+    {requireTable.funcAddress_GetMillisecondsTime}
+  )
+  
+  core.writeCode(
+    addrOfStopwatchStartGetTime,
+    {
+      0xe8, createOffsetForRelativeCall(addrOfStopwatchStartGetTime, requireTable.funcAddress_GetMicrosecondsTime),
+      0x90
+    }
   )
 
+  core.writeCode(
+    addrOfStopwatchStopGetTime,
+    {
+      0xe8, createOffsetForRelativeCall(addrOfStopwatchStopGetTime, requireTable.funcAddress_GetMicrosecondsTime),
+      0x90
+    }
+  )
+  
+  core.writeCode(
+    addrOfBeforeGameTicksGetTime,
+    {
+      0xe8, createOffsetForRelativeCall(addrOfBeforeGameTicksGetTime, requireTable.funcAddress_FakeSaveTimeBeforeGameTicks),
+      0x90, 0x90
+    }
+  )
+
+  core.writeCode(
+    addrOfAfterGameTicksGetTime,
+    {
+      0xe8, createOffsetForRelativeCall(addrOfAfterGameTicksGetTime, requireTable.funcAddress_FakeGetTimeUsedForGameTicks),
+      0x90, 0x90, 0x90
+    }
+  )
+  
+  for _, address in pairs(numerator1000Addresses) do
+    core.writeCode(
+      address,
+      {1000000}
+    )
+  end
+  
+  core.writeCode(
+    addrOfMinus1000Numerator,
+    {-1000000}
+  )
+  
 end
 
 exports.disable = function(self, moduleConfig, globalConfig) error("not implemented") end
