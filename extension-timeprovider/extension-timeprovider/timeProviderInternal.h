@@ -2,6 +2,19 @@
 
 #include "timeProviderHeader.h"
 
+/* objects */
+
+struct FakeGameSynchronyState
+{
+  using ActualDetermineGameTicksToPerform = DWORD (FakeGameSynchronyState::*)(int currentPlayerSlotID);
+
+  inline static ActualDetermineGameTicksToPerform actualDetermineGameTicksToPerform{ nullptr };
+
+  // funcs
+
+  DWORD __thiscall detouredDetermineGameTicksToPerform(int currentPlayerSlotID);
+};
+
 /* exports */
 
 extern "C" __declspec(dllexport) uint64_t __stdcall GetFullNanosecondsTime();

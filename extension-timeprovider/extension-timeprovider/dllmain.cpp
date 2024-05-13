@@ -6,6 +6,8 @@
 #include "timeProviderInternal.h"
 
 #include <chrono>
+#include <deque>
+#include <numeric>
 
 
 /* export C */
@@ -90,6 +92,7 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetMillisecondsTime(lua_State *
 /* time resolution increase helpers */
 
 static DWORD timeBeforeGameTicks{};
+static DWORD timeUsedForGameTicks{};
 
 static void __stdcall FakeSaveTimeBeforeGameTicks()
 {
@@ -98,15 +101,165 @@ static void __stdcall FakeSaveTimeBeforeGameTicks()
 
 static DWORD __stdcall FakeGetTimeUsedForGameTicks()
 {
-  return GetMicrosecondsTime() - timeBeforeGameTicks;
+  timeUsedForGameTicks = GetMicrosecondsTime() - timeBeforeGameTicks;
+  return timeUsedForGameTicks;
 }
+
+
+/* make slowdown stable */
+
+static std::deque<DWORD> averageLoopDurationQueue{};
+
+static void pushLoopDuration(const int duration)
+{
+  if (averageLoopDurationQueue.size() >= 100)
+  {
+    averageLoopDurationQueue.pop_back();
+  }
+  averageLoopDurationQueue.push_front(duration);
+}
+
+static DWORD getAverageLoopDuration()
+{
+  if (averageLoopDurationQueue.size() < 1)
+  {
+    return 0;
+  }
+  return std::accumulate(averageLoopDurationQueue.begin(), averageLoopDurationQueue.end(), 0) / averageLoopDurationQueue.size();
+}
+
+static std::deque<DWORD> averageTickDurationQueue{};
+
+static void pushAverageTickDuration(const int duration)
+{
+  if (averageTickDurationQueue.size() >= 100)
+  {
+    averageTickDurationQueue.pop_back();
+  }
+  averageTickDurationQueue.push_front(duration);
+}
+
+static DWORD getAverageTickDuration()
+{
+  if (averageTickDurationQueue.size() < 1)
+  {
+    return 0;
+  }
+  return std::accumulate(averageTickDurationQueue.begin(), averageTickDurationQueue.end(), 0) / averageTickDurationQueue.size();
+}
+
+static DWORD durationOfOneTick{};
+static DWORD lastNumberOfTicks{ 1 };
+
+static DWORD* durationLastLoop{ nullptr };
+static DWORD* tickDurationCarry{ nullptr };
+static DWORD* averageTickDurationLastLoop{ nullptr };
+
+static DWORD maxTicks = { MAXDWORD };
+
+static DWORD lastTickNumberRequestDuration{ MAXDWORD };
+static DWORD lastTickNumberRequest{ GetMicrosecondsTime() };
+
+
+DWORD __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
+{
+  DWORD numberOfTicks{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
+
+  const DWORD currentTimestamp{ GetMicrosecondsTime() };
+  const DWORD timeSinceLastTickRequest{ currentTimestamp - lastTickNumberRequest };
+
+  if (numberOfTicks > 1)
+  {
+    //const DWORD averageLoopDuration{ getAverageLoopDuration() };
+    if (timeSinceLastTickRequest < lastTickNumberRequestDuration)
+    {
+      *tickDurationCarry = 0;
+      maxTicks = lastNumberOfTicks - 1;
+      if (maxTicks < 1)
+      {
+        maxTicks = 1;
+      }
+    }
+    else if (maxTicks < MAXDWORD)
+    {
+      ++maxTicks;
+    }
+    
+    if (numberOfTicks > maxTicks)
+    {
+      *tickDurationCarry = 0;
+      numberOfTicks = maxTicks;
+    }
+
+    // needs also the speed to react properly
+    /*if ((durationOfOneTick * 7) / 10 < *averageTickDurationLastLoop)
+    {
+      DWORD intendedTicks{ *durationLastLoop / *averageTickDurationLastLoop };
+      if (intendedTicks < 1)
+      {
+        intendedTicks = 1;
+      }
+
+      if (maxTicks > intendedTicks)
+      {
+        maxTicks = intendedTicks;
+      }
+      else
+      {
+        --maxTicks;
+      }
+
+      if (maxTicks < 1)
+      {
+        maxTicks = 1;
+      }
+      
+      *tickDurationCarry = 0;
+      numberOfTicks = maxTicks;
+    }
+    else if (numberOfTicks > maxTicks)
+    {
+      *tickDurationCarry = 0;
+      numberOfTicks = maxTicks;
+    }
+    else if ((numberOfTicks * 9) / 10 < maxTicks && maxTicks < MAXDWORD)
+    {
+      ++maxTicks;
+    }
+    */
+  }
+
+  lastTickNumberRequestDuration = timeSinceLastTickRequest;
+  lastTickNumberRequest = currentTimestamp;
+
+  pushAverageTickDuration(*averageTickDurationLastLoop);
+  pushLoopDuration(*durationLastLoop);
+  lastNumberOfTicks = numberOfTicks;
+  return numberOfTicks;
+}
+
 
 // lua module load
 extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
 {
   lua_newtable(L); // push a new table on the stack
 
+  // address
+  lua_pushinteger(L, (DWORD) &FakeGameSynchronyState::actualDetermineGameTicksToPerform);
+  lua_setfield(L, -2, "address_ActualDetermineGameTicksToPerform");
+  lua_pushinteger(L, (DWORD) &durationOfOneTick);
+  lua_setfield(L, -2, "address_DurationOfOneTickReceiver");
+  lua_pushinteger(L, (DWORD) &tickDurationCarry);
+  lua_setfield(L, -2, "address_TickDurationCarry");
+  lua_pushinteger(L, (DWORD) &durationLastLoop);
+  lua_setfield(L, -2, "address_DurationLastLoop");
+  lua_pushinteger(L, (DWORD) &averageTickDurationLastLoop);
+  lua_setfield(L, -2, "address_AverageTickDurationLastLoop");
+
   // simple replace
+  auto memberFuncPtr{ &FakeGameSynchronyState::detouredDetermineGameTicksToPerform };
+  lua_pushinteger(L, *(DWORD*) &memberFuncPtr);
+  lua_setfield(L, -2, "funcAddress_DetouredDetermineGameTicksToPerform");
   lua_pushinteger(L, (DWORD) GetMillisecondsTime);
   lua_setfield(L, -2, "funcAddress_GetMillisecondsTime");
 

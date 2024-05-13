@@ -32,10 +32,6 @@ local function getNumerator1000Addresses()
   return foundAddresses
 end
 
---[[
-  Placing a "E9 88000000" (JMP) uncaps the actions per frame, but this can actually break the performance.
-]]--
-
 exports.enable = function(self, moduleConfig, globalConfig)
 
   local addrOfGetTime = getAddress(
@@ -71,6 +67,45 @@ exports.enable = function(self, moduleConfig, globalConfig)
     "'timeProvider' was unable to find the address for the -1000 numerator.",
     function(foundAddress) return foundAddress + 1 end
   )
+  
+  local addrOfCallToDetermineTickFunc = getAddress(
+    "E8 ? ? ? ? B9 ? ? ? ? A3 C0 7D FE 01",
+    "'timeProvider' was unable to find the address for the call to the determine tick number function."
+  )
+  
+  local addrOfDetermineTickFunc = getAddress(
+    "53 55 56 8B ? ? ? ? ? 33 ED 3B F5",
+    "'timeProvider' was unable to find the address of the determine tick number function."
+  )
+  
+  local addrToUseForSavingValuesAndSkippingSlowdowns = getAddress(
+    "8B ? ? ? ? ? 3B D9 7E 25",
+    "'timeProvider' was unable to find the address to skip slow downs from."
+  )
+  
+  local addrToJumpToSkipSlowdowns = getAddress(
+    "3B F9 7E 1C",
+    "'timeProvider' was unable to find the address to jump to to skip the games tick slow downs."
+  )
+  
+  local addrOfTickDurationCarry = getAddress(
+    "8B ? ? ? ? ? 2B D1 03 FA ",
+    "'timeProvider' was unable to find the address of the tick duration carry.",
+    function(foundAddress) return core.readInteger(foundAddress + 2) end
+  )
+  
+  local addrOfLastLoopDuration = getAddress(
+    "8B ? ? ? ? ? 8B ? ? ? ? ? 2B D1 03 FA",
+    "'timeProvider' was unable to find the address of the last game loop duration.",
+    function(foundAddress) return core.readInteger(foundAddress + 2) end
+  )
+  
+  local addrOfAverageDurationPerTick = getAddress(
+    "F7 ? ? ? ? ? A3 C8 7D FE 01",
+    "'timeProvider' was unable to find the address of the average duration per tick.",
+    function(foundAddress) return core.readInteger(foundAddress + 2) end
+  )
+  
   --[[ load module ]]--
   
   local requireTable = require("timeprovider.dll") -- loads the dll in memory and runs luaopen_timeprovider
@@ -130,6 +165,39 @@ exports.enable = function(self, moduleConfig, globalConfig)
   core.writeCode(
     addrOfMinus1000Numerator,
     {-1000000}
+  )
+  
+  core.writeCode(
+    addrOfCallToDetermineTickFunc,
+    {0xe8, createOffsetForRelativeCall(addrOfCallToDetermineTickFunc, requireTable.funcAddress_DetouredDetermineGameTicksToPerform)}
+  )
+  
+  core.writeCode(
+    requireTable.address_ActualDetermineGameTicksToPerform,
+    {addrOfDetermineTickFunc}
+  )
+  
+  core.writeCode(
+    addrToUseForSavingValuesAndSkippingSlowdowns,
+    {
+      0x89, 0x0D, requireTable.address_DurationOfOneTickReceiver,
+      0xe9, core.itob(addrToJumpToSkipSlowdowns - addrToUseForSavingValuesAndSkippingSlowdowns - 11)
+    }
+  )
+  
+  core.writeCode(
+    requireTable.address_TickDurationCarry,
+    {addrOfTickDurationCarry}
+  )
+  
+  core.writeCode(
+    requireTable.address_DurationLastLoop,
+    {addrOfLastLoopDuration}
+  )
+  
+  core.writeCode(
+    requireTable.address_AverageTickDurationLastLoop,
+    {addrOfAverageDurationPerTick}
   )
   
 end
