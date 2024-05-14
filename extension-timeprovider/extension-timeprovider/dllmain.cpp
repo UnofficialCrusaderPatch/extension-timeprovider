@@ -8,6 +8,7 @@
 #include <chrono>
 #include <deque>
 #include <numeric>
+#include <algorithm>
 
 
 /* export C */
@@ -108,6 +109,46 @@ static DWORD __stdcall FakeGetTimeUsedForGameTicks()
 
 /* make slowdown stable */
 
+static std::deque<DWORD> maxTickQueue{};
+
+static void pushMaxTick(const int duration)
+{
+  if (maxTickQueue.size() >= 100)
+  {
+    maxTickQueue.pop_back();
+  }
+  maxTickQueue.push_front(duration);
+}
+
+static DWORD getAverageMaxTick()
+{
+  if (maxTickQueue.size() < 1)
+  {
+    return 0;
+  }
+  return std::accumulate(maxTickQueue.begin(), maxTickQueue.end(), 0) / maxTickQueue.size();
+}
+
+static std::deque<DWORD> averageFPSQueue{};
+
+static void pushFPS(const int duration)
+{
+  if (averageFPSQueue.size() >= 100)
+  {
+    averageFPSQueue.pop_back();
+  }
+  averageFPSQueue.push_front(duration);
+}
+
+static DWORD getAverageFPS()
+{
+  if (averageFPSQueue.size() < 1)
+  {
+    return 0;
+  }
+  return std::accumulate(averageFPSQueue.begin(), averageFPSQueue.end(), 0) / averageFPSQueue.size();
+}
+
 static std::deque<DWORD> averageLoopDurationQueue{};
 
 static void pushLoopDuration(const int duration)
@@ -149,52 +190,77 @@ static DWORD getAverageTickDuration()
 }
 
 static DWORD durationOfOneTick{};
-static DWORD lastNumberOfTicks{ 1 };
+static DWORD lastNumberOfTicks{};
 
 static DWORD* durationLastLoop{ nullptr };
-static DWORD* tickDurationCarry{ nullptr };
+static int* tickDurationCarry{ nullptr };
 static DWORD* averageTickDurationLastLoop{ nullptr };
 
 static DWORD maxTicks = { MAXDWORD };
+static DWORD stableCounter = {};
+static DWORD instableCounter = {};
 
-static DWORD lastTickNumberRequestDuration{ MAXDWORD };
-static DWORD lastTickNumberRequest{ GetMicrosecondsTime() };
+static DWORD bestRelation{ MAXDWORD };
+static DWORD maxStableTicks{ 1 };
+
+static DWORD lastFPS{};
 
 
 DWORD __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
+  // at this point, even the duration of one tick is the one from the last loop
+ /* if (lastNumberOfTicks > 0 && *averageTickDurationLastLoop > durationOfOneTick)
+  {
+    *tickDurationCarry -= (*averageTickDurationLastLoop - durationOfOneTick) * lastNumberOfTicks;
+  }*/
+
+  //if (*durationLastLoop)
+  //{
+  //  lastFPS = 1000000 / *durationLastLoop;
+  //}
+
+  // TODO try lowering actual speed computation
+
   DWORD numberOfTicks{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
 
-  const DWORD currentTimestamp{ GetMicrosecondsTime() };
-  const DWORD timeSinceLastTickRequest{ currentTimestamp - lastTickNumberRequest };
+ /* if (*averageTickDurationLastLoop && *durationLastLoop > 16700)
+  {
+    *tickDurationCarry = 0;
+    numberOfTicks = (16700 * timeUsedForGameTicks / *durationLastLoop) / durationOfOneTick;
+  }*/
 
   if (numberOfTicks > 1)
   {
-    //const DWORD averageLoopDuration{ getAverageLoopDuration() };
-    if (timeSinceLastTickRequest < lastTickNumberRequestDuration)
+    const DWORD averageMaxTick{ getAverageMaxTick() };
+    if (*averageTickDurationLastLoop && *averageTickDurationLastLoop > durationOfOneTick)
     {
       *tickDurationCarry = 0;
-      maxTicks = lastNumberOfTicks - 1;
-      if (maxTicks < 1)
-      {
-        maxTicks = 1;
-      }
-    }
-    else if (maxTicks < MAXDWORD)
-    {
-      ++maxTicks;
-    }
-    
-    if (numberOfTicks > maxTicks)
-    {
-      *tickDurationCarry = 0;
-      numberOfTicks = maxTicks;
+      const DWORD altTickRate{ ((numberOfTicks * durationOfOneTick) / (*averageTickDurationLastLoop * 2)) * (*durationLastLoop / timeUsedForGameTicks) };
+      
+      numberOfTicks = altTickRate < averageMaxTick ? altTickRate : averageMaxTick;
+      pushMaxTick(altTickRate);
     }
 
-    // needs also the speed to react properly
-    /*if ((durationOfOneTick * 7) / 10 < *averageTickDurationLastLoop)
+    if (averageMaxTick)
     {
-      DWORD intendedTicks{ *durationLastLoop / *averageTickDurationLastLoop };
+      if (averageMaxTick < numberOfTicks)
+      {
+        *tickDurationCarry = 0;
+        numberOfTicks = averageMaxTick;
+      }
+      pushMaxTick(averageMaxTick + 1);
+    }
+
+    /*const DWORD averageFPS{ getAverageFPS() };
+    if (averageFPS > lastFPS + 3)
+    {
+      *tickDurationCarry = 0;
+      numberOfTicks = numberOfTicks * (lastFPS * 1000000) / (averageFPS * 1000000);
+    }*/
+
+    /*if (*averageTickDurationLastLoop && averageLoopDurationQueue.size() && averageLoopDurationQueue.front() < *durationLastLoop)
+    {
+      DWORD intendedTicks{ averageLoopDurationQueue.front() / *averageTickDurationLastLoop };
       if (intendedTicks < 1)
       {
         intendedTicks = 1;
@@ -214,26 +280,45 @@ DWORD __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int
         maxTicks = 1;
       }
       
+      stableRoundCounter = 0;
       *tickDurationCarry = 0;
       numberOfTicks = maxTicks;
     }
     else if (numberOfTicks > maxTicks)
     {
+      stableRoundCounter = 0;
       *tickDurationCarry = 0;
       numberOfTicks = maxTicks;
     }
-    else if ((numberOfTicks * 9) / 10 < maxTicks && maxTicks < MAXDWORD)
+    else if (stableRoundCounter >= 1000 && numberOfTicks <= maxTicks && maxTicks < MAXDWORD)
     {
       ++maxTicks;
     }
-    */
+    else if (stableRoundCounter < 1000)
+    {
+      ++stableRoundCounter;
+    }*/
+
+    /*if (*durationLastLoop && lastNumberOfTicks)
+    {
+      const DWORD relationDurationTicks{ *durationLastLoop / lastNumberOfTicks };
+      if (bestRelation > relationDurationTicks)
+      {
+        bestRelation = relationDurationTicks;
+        maxStableTicks = lastNumberOfTicks;
+      }
+      else
+      {
+        *tickDurationCarry = 0;
+        ++bestRelation;
+        numberOfTicks = ++maxStableTicks;
+      }
+    }*/
   }
 
-  lastTickNumberRequestDuration = timeSinceLastTickRequest;
-  lastTickNumberRequest = currentTimestamp;
-
+ /* pushFPS(lastFPS);
   pushAverageTickDuration(*averageTickDurationLastLoop);
-  pushLoopDuration(*durationLastLoop);
+  pushLoopDuration(*durationLastLoop);*/
   lastNumberOfTicks = numberOfTicks;
   return numberOfTicks;
 }
