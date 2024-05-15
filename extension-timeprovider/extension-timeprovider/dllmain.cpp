@@ -9,6 +9,7 @@
 #include <deque>
 #include <numeric>
 #include <algorithm>
+#include <array>
 
 
 /* export C */
@@ -92,6 +93,7 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetMillisecondsTime(lua_State *
 
 /* time resolution increase helpers */
 
+static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct { nullptr };
 static DWORD timeBeforeGameTicks{};
 static DWORD timeUsedForGameTicks{};
 
@@ -109,85 +111,55 @@ static DWORD __stdcall FakeGetTimeUsedForGameTicks()
 
 /* make slowdown stable */
 
-static std::deque<DWORD> maxTickQueue{};
-
-static void pushMaxTick(const int duration)
+template<typename T, size_t _Size>
+class HeuristicHelper
 {
-  if (maxTickQueue.size() >= 100)
+private:
+  int currentArrayIndex{};
+  std::array<T, _Size> values{};
+
+public:
+
+  void pushValue(const int value)
   {
-    maxTickQueue.pop_back();
+    values[currentArrayIndex++] = value;
+    if (currentArrayIndex >= values.size())
+    {
+      currentArrayIndex = 0;
+    }
   }
-  maxTickQueue.push_front(duration);
-}
 
-static DWORD getAverageMaxTick()
-{
-  if (maxTickQueue.size() < 1)
+  T getAverage()
   {
-    return 0;
+    if (values.empty())
+    {
+      return 0.0;
+    }
+    return std::accumulate(values.begin(), values.end(), 0.0) / values.size();
   }
-  return std::accumulate(maxTickQueue.begin(), maxTickQueue.end(), 0) / maxTickQueue.size();
-}
 
-static std::deque<DWORD> averageFPSQueue{};
-
-static void pushFPS(const int duration)
-{
-  if (averageFPSQueue.size() >= 100)
+  // source: https://stackoverflow.com/a/39487448
+  T getMedian()
   {
-    averageFPSQueue.pop_back();
+    if (values.empty())
+    {
+      return 0.0;
+    }
+
+    std::array<T, _Size> tmpArray{ values };
+    const size_t n = tmpArray.size() / 2;
+    std::nth_element(tmpArray.begin(), tmpArray.begin() + n, tmpArray.end());
+    if (tmpArray.size() % 2) {
+      return tmpArray[n];
+    }
+    else
+    {
+      // even sized vector -> average the two middle values
+      auto maxIt{ std::max_element(tmpArray.begin(), tmpArray.begin() + n) };
+      return (*maxIt + tmpArray[n]) / 2;
+    }
   }
-  averageFPSQueue.push_front(duration);
-}
-
-static DWORD getAverageFPS()
-{
-  if (averageFPSQueue.size() < 1)
-  {
-    return 0;
-  }
-  return std::accumulate(averageFPSQueue.begin(), averageFPSQueue.end(), 0) / averageFPSQueue.size();
-}
-
-static std::deque<DWORD> averageLoopDurationQueue{};
-
-static void pushLoopDuration(const int duration)
-{
-  if (averageLoopDurationQueue.size() >= 100)
-  {
-    averageLoopDurationQueue.pop_back();
-  }
-  averageLoopDurationQueue.push_front(duration);
-}
-
-static DWORD getAverageLoopDuration()
-{
-  if (averageLoopDurationQueue.size() < 1)
-  {
-    return 0;
-  }
-  return std::accumulate(averageLoopDurationQueue.begin(), averageLoopDurationQueue.end(), 0) / averageLoopDurationQueue.size();
-}
-
-static std::deque<DWORD> averageTickDurationQueue{};
-
-static void pushAverageTickDuration(const int duration)
-{
-  if (averageTickDurationQueue.size() >= 100)
-  {
-    averageTickDurationQueue.pop_back();
-  }
-  averageTickDurationQueue.push_front(duration);
-}
-
-static DWORD getAverageTickDuration()
-{
-  if (averageTickDurationQueue.size() < 1)
-  {
-    return 0;
-  }
-  return std::accumulate(averageTickDurationQueue.begin(), averageTickDurationQueue.end(), 0) / averageTickDurationQueue.size();
-}
+};
 
 static DWORD durationOfOneTick{};
 static DWORD lastNumberOfTicks{};
@@ -206,121 +178,18 @@ static DWORD maxStableTicks{ 1 };
 static DWORD lastFPS{};
 
 
+static DWORD overheadCarry{};
+
 DWORD __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
-  // at this point, even the duration of one tick is the one from the last loop
- /* if (lastNumberOfTicks > 0 && *averageTickDurationLastLoop > durationOfOneTick)
-  {
-    *tickDurationCarry -= (*averageTickDurationLastLoop - durationOfOneTick) * lastNumberOfTicks;
-  }*/
+  // will do other side effects and check if ticks should be performed, 1 if yes
+  // 1 will not mean that it needs to be more then 0!
+  bool computeTicks{ static_cast<bool>((*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID)) };
 
-  //if (*durationLastLoop)
-  //{
-  //  lastFPS = 1000000 / *durationLastLoop;
-  //}
+  // TOD0: start replicating the game logic, then clean the cod here, then test some stuff with full control again
+  // if nothing helps, take control of the executing tick loop, to break early if needed!
 
-  // TODO try lowering actual speed computation
-
-  DWORD numberOfTicks{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
-
- /* if (*averageTickDurationLastLoop && *durationLastLoop > 16700)
-  {
-    *tickDurationCarry = 0;
-    numberOfTicks = (16700 * timeUsedForGameTicks / *durationLastLoop) / durationOfOneTick;
-  }*/
-
-  if (numberOfTicks > 1)
-  {
-    const DWORD averageMaxTick{ getAverageMaxTick() };
-    if (*averageTickDurationLastLoop && *averageTickDurationLastLoop > durationOfOneTick)
-    {
-      *tickDurationCarry = 0;
-      const DWORD altTickRate{ ((numberOfTicks * durationOfOneTick) / (*averageTickDurationLastLoop * 2)) * (*durationLastLoop / timeUsedForGameTicks) };
-      
-      numberOfTicks = altTickRate < averageMaxTick ? altTickRate : averageMaxTick;
-      pushMaxTick(altTickRate);
-    }
-
-    if (averageMaxTick)
-    {
-      if (averageMaxTick < numberOfTicks)
-      {
-        *tickDurationCarry = 0;
-        numberOfTicks = averageMaxTick;
-      }
-      pushMaxTick(averageMaxTick + 1);
-    }
-
-    /*const DWORD averageFPS{ getAverageFPS() };
-    if (averageFPS > lastFPS + 3)
-    {
-      *tickDurationCarry = 0;
-      numberOfTicks = numberOfTicks * (lastFPS * 1000000) / (averageFPS * 1000000);
-    }*/
-
-    /*if (*averageTickDurationLastLoop && averageLoopDurationQueue.size() && averageLoopDurationQueue.front() < *durationLastLoop)
-    {
-      DWORD intendedTicks{ averageLoopDurationQueue.front() / *averageTickDurationLastLoop };
-      if (intendedTicks < 1)
-      {
-        intendedTicks = 1;
-      }
-
-      if (maxTicks > intendedTicks)
-      {
-        maxTicks = intendedTicks;
-      }
-      else
-      {
-        --maxTicks;
-      }
-
-      if (maxTicks < 1)
-      {
-        maxTicks = 1;
-      }
-      
-      stableRoundCounter = 0;
-      *tickDurationCarry = 0;
-      numberOfTicks = maxTicks;
-    }
-    else if (numberOfTicks > maxTicks)
-    {
-      stableRoundCounter = 0;
-      *tickDurationCarry = 0;
-      numberOfTicks = maxTicks;
-    }
-    else if (stableRoundCounter >= 1000 && numberOfTicks <= maxTicks && maxTicks < MAXDWORD)
-    {
-      ++maxTicks;
-    }
-    else if (stableRoundCounter < 1000)
-    {
-      ++stableRoundCounter;
-    }*/
-
-    /*if (*durationLastLoop && lastNumberOfTicks)
-    {
-      const DWORD relationDurationTicks{ *durationLastLoop / lastNumberOfTicks };
-      if (bestRelation > relationDurationTicks)
-      {
-        bestRelation = relationDurationTicks;
-        maxStableTicks = lastNumberOfTicks;
-      }
-      else
-      {
-        *tickDurationCarry = 0;
-        ++bestRelation;
-        numberOfTicks = ++maxStableTicks;
-      }
-    }*/
-  }
-
- /* pushFPS(lastFPS);
-  pushAverageTickDuration(*averageTickDurationLastLoop);
-  pushLoopDuration(*durationLastLoop);*/
-  lastNumberOfTicks = numberOfTicks;
-  return numberOfTicks;
+  return computeTicks;
 }
 
 
@@ -340,6 +209,8 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   lua_setfield(L, -2, "address_DurationLastLoop");
   lua_pushinteger(L, (DWORD) &averageTickDurationLastLoop);
   lua_setfield(L, -2, "address_AverageTickDurationLastLoop");
+  lua_pushinteger(L, (DWORD) &gameCoreTimeSubStruct);
+  lua_setfield(L, -2, "address_GameCoreTimeSubStruct");
 
   // simple replace
   auto memberFuncPtr{ &FakeGameSynchronyState::detouredDetermineGameTicksToPerform };

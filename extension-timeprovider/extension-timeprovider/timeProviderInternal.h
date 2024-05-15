@@ -15,6 +15,18 @@ struct FakeGameSynchronyState
   DWORD __thiscall detouredDetermineGameTicksToPerform(int currentPlayerSlotID);
 };
 
+struct FakeGameCoreTimeSubStruct
+{
+  DWORD gameSpeedMultiplicator; // will not be used
+  DWORD performedGameTicksThisLoop;
+  DWORD gameTicksThisLoop;
+  DWORD gameTicksLastLoop;
+  DWORD averageTimePerGameTick;
+  DWORD timeBeforeRunningGameTicksThisLoop;
+  DWORD other[2]; // not interesting for here
+  DWORD gameSpeed;
+};
+
 /* exports */
 
 extern "C" __declspec(dllexport) uint64_t __stdcall GetFullNanosecondsTime();

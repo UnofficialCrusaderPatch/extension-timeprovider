@@ -106,6 +106,14 @@ exports.enable = function(self, moduleConfig, globalConfig)
     function(foundAddress) return core.readInteger(foundAddress + 2) end
   )
   
+  local addrToPlaceTickComputeSkip = getAddress(
+    "57 8B ? ? ? ? ? 3B FD 7D 0F",
+    "'timeProvider' was unable to find the address to early return from the real determine tick function."
+  )
+  
+  local addrToTimeRelatedGameCoreSubStruct = core.readInteger(addrToPlaceTickComputeSkip + 3)
+  
+  
   --[[ load module ]]--
   
   local requireTable = require("timeprovider.dll") -- loads the dll in memory and runs luaopen_timeprovider
@@ -198,6 +206,24 @@ exports.enable = function(self, moduleConfig, globalConfig)
   core.writeCode(
     requireTable.address_AverageTickDurationLastLoop,
     {addrOfAverageDurationPerTick}
+  )
+  
+  core.writeCode(
+    addrToPlaceTickComputeSkip,
+    -- pop registers, set return to 1 and return
+    -- 1 indicates, that ticks should be computed
+    {
+      0x5e,
+      0x5d, 
+      0xb8, 0x01, 0x00, 0x00, 0x00,
+      0x5b,
+      0xc2, 0x04, 00
+    }
+  )
+  
+  core.writeCode(
+    requireTable.address_GameCoreTimeSubStruct,
+    {addrToTimeRelatedGameCoreSubStruct}
   )
   
 end
