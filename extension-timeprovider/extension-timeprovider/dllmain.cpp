@@ -93,8 +93,6 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetMillisecondsTime(lua_State *
 
 /* time resolution increase helpers */
 
-static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct { nullptr };
-static int timeCarry{};
 static DWORD timeBeforeGameTicks{};
 static DWORD timeUsedForGameTicks{};
 
@@ -162,35 +160,20 @@ public:
   }
 };
 
-static DWORD durationOfOneTick1{};
-static DWORD lastNumberOfTicks{};
-
+static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct{ nullptr };
+static int timeCarry{};
 static int* durationLastLoop{ nullptr };
-static int* tickDurationCarry{ nullptr };
-static DWORD* averageTickDurationLastLoop{ nullptr };
 
-static DWORD maxTicks = { MAXDWORD };
-static DWORD stableCounter = {};
-static DWORD instableCounter = {};
-
-static DWORD bestRelation{ MAXDWORD };
-static DWORD maxStableTicks{ 1 };
-
-static DWORD lastFPS{};
-
-
-static DWORD overheadCarry{};
-
-DWORD __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
+int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
-  // will do other side effects and check if ticks should be performed, 1 if yes
-  // 1 will not mean that it needs to be more then 0!
-  if (!static_cast<bool>((*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID)))
+  // will do other side effects and check if ticks should be performed, non 0 (actual game speed) if yes
+  const int currentGameSpeed{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
+  if (!currentGameSpeed)
   {
     return 0;
   }
 
-  const int durationOfOneTick{ 1000000 / gameCoreTimeSubStruct->gameSpeed };
+  const int durationOfOneTick{ 1000000 / currentGameSpeed };
 
   const int relativeTimeCarry{ timeCarry + (*durationLastLoop - durationOfOneTick) };
   timeCarry = relativeTimeCarry;
@@ -208,6 +191,9 @@ DWORD __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int
   return 1;
   // then clean the cod here, then test some stuff with full control again
   // if nothing helps, take control of the executing tick loop, to break early if needed!;
+
+  // use position at 0057c3a5 and create a call to own code, the dirtied registers are not used,
+  // it needs to return something so that a opcode to set a flag can be run to continue the loop
 }
 
 
@@ -219,14 +205,8 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   // address
   lua_pushinteger(L, (DWORD) &FakeGameSynchronyState::actualDetermineGameTicksToPerform);
   lua_setfield(L, -2, "address_ActualDetermineGameTicksToPerform");
-  lua_pushinteger(L, (DWORD) &durationOfOneTick1);
-  lua_setfield(L, -2, "address_DurationOfOneTickReceiver");
-  lua_pushinteger(L, (DWORD) &tickDurationCarry);
-  lua_setfield(L, -2, "address_TickDurationCarry");
   lua_pushinteger(L, (DWORD) &durationLastLoop);
   lua_setfield(L, -2, "address_DurationLastLoop");
-  lua_pushinteger(L, (DWORD) &averageTickDurationLastLoop);
-  lua_setfield(L, -2, "address_AverageTickDurationLastLoop");
   lua_pushinteger(L, (DWORD) &gameCoreTimeSubStruct);
   lua_setfield(L, -2, "address_GameCoreTimeSubStruct");
 

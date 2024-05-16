@@ -78,31 +78,9 @@ exports.enable = function(self, moduleConfig, globalConfig)
     "'timeProvider' was unable to find the address of the determine tick number function."
   )
   
-  local addrToUseForSavingValuesAndSkippingSlowdowns = getAddress(
-    "8B ? ? ? ? ? 3B D9 7E 25",
-    "'timeProvider' was unable to find the address to skip slow downs from."
-  )
-  
-  local addrToJumpToSkipSlowdowns = getAddress(
-    "3B F9 7E 1C",
-    "'timeProvider' was unable to find the address to jump to to skip the games tick slow downs."
-  )
-  
-  local addrOfTickDurationCarry = getAddress(
-    "8B ? ? ? ? ? 2B D1 03 FA ",
-    "'timeProvider' was unable to find the address of the tick duration carry.",
-    function(foundAddress) return core.readInteger(foundAddress + 2) end
-  )
-  
   local addrOfLastLoopDuration = getAddress(
     "8B ? ? ? ? ? 8B ? ? ? ? ? 2B D1 03 FA",
     "'timeProvider' was unable to find the address of the last game loop duration.",
-    function(foundAddress) return core.readInteger(foundAddress + 2) end
-  )
-  
-  local addrOfAverageDurationPerTick = getAddress(
-    "F7 ? ? ? ? ? A3 C8 7D FE 01",
-    "'timeProvider' was unable to find the address of the average duration per tick.",
     function(foundAddress) return core.readInteger(foundAddress + 2) end
   )
   
@@ -113,6 +91,10 @@ exports.enable = function(self, moduleConfig, globalConfig)
   
   local addrToTimeRelatedGameCoreSubStruct = core.readInteger(addrToPlaceTickComputeSkip + 3)
   
+  -- Position to detour to own code and override tick loop control
+  -- can be a call (dirtied registers are unused in this position, but consider that a cmp func needs to be done for the loop condition
+  -- might also change the loop condition to make it easier... (relative address is after all in second byte of jmp instruction and could stay
+  -- A1 ? ? ? ? 03 C5 3B
   
   --[[ load module ]]--
   
@@ -186,36 +168,18 @@ exports.enable = function(self, moduleConfig, globalConfig)
   )
   
   core.writeCode(
-    addrToUseForSavingValuesAndSkippingSlowdowns,
-    {
-      0x89, 0x0D, requireTable.address_DurationOfOneTickReceiver,
-      0xe9, core.itob(addrToJumpToSkipSlowdowns - addrToUseForSavingValuesAndSkippingSlowdowns - 11)
-    }
-  )
-  
-  core.writeCode(
-    requireTable.address_TickDurationCarry,
-    {addrOfTickDurationCarry}
-  )
-  
-  core.writeCode(
     requireTable.address_DurationLastLoop,
     {addrOfLastLoopDuration}
   )
   
   core.writeCode(
-    requireTable.address_AverageTickDurationLastLoop,
-    {addrOfAverageDurationPerTick}
-  )
-  
-  core.writeCode(
     addrToPlaceTickComputeSkip,
-    -- pop registers, set return to 1 and return
-    -- 1 indicates, that ticks should be computed
+    -- pop registers, set return to computed game speed and return
+    -- non 0 indicates that ticks should be computed
     {
+      0x89, 0xf0,
       0x5e,
-      0x5d, 
-      0xb8, 0x01, 0x00, 0x00, 0x00,
+      0x5d,
       0x5b,
       0xc2, 0x04, 00
     }

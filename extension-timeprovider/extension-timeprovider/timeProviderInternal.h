@@ -6,13 +6,13 @@
 
 struct FakeGameSynchronyState
 {
-  using ActualDetermineGameTicksToPerform = DWORD (FakeGameSynchronyState::*)(int currentPlayerSlotID);
+  using ActualDetermineGameTicksToPerform = int (FakeGameSynchronyState::*)(int currentPlayerSlotID);
 
   inline static ActualDetermineGameTicksToPerform actualDetermineGameTicksToPerform{ nullptr };
 
   // funcs
 
-  DWORD __thiscall detouredDetermineGameTicksToPerform(int currentPlayerSlotID);
+  int __thiscall detouredDetermineGameTicksToPerform(int currentPlayerSlotID);
 };
 
 struct FakeGameCoreTimeSubStruct
@@ -24,7 +24,7 @@ struct FakeGameCoreTimeSubStruct
   int averageTimePerGameTick;
   int timeBeforeRunningGameTicksThisLoop;
   int other[2]; // not interesting for here
-  int gameSpeed;
+  int singlePlayerGameSpeed;
 };
 
 /* exports */
