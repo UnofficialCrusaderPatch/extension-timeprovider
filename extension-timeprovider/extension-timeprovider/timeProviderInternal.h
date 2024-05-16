@@ -17,14 +17,14 @@ struct FakeGameSynchronyState
 
 struct FakeGameCoreTimeSubStruct
 {
-  DWORD gameSpeedMultiplicator; // will not be used
-  DWORD performedGameTicksThisLoop;
-  DWORD gameTicksThisLoop;
-  DWORD gameTicksLastLoop;
-  DWORD averageTimePerGameTick;
-  DWORD timeBeforeRunningGameTicksThisLoop;
-  DWORD other[2]; // not interesting for here
-  DWORD gameSpeed;
+  int gameSpeedMultiplicator; // will not be used
+  int performedGameTicksThisLoop;
+  int gameTicksThisLoop;
+  int gameTicksLastLoop;
+  int averageTimePerGameTick;
+  int timeBeforeRunningGameTicksThisLoop;
+  int other[2]; // not interesting for here
+  int gameSpeed;
 };
 
 /* exports */
