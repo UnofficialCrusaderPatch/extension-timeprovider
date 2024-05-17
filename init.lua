@@ -91,6 +91,11 @@ exports.enable = function(self, moduleConfig, globalConfig)
   
   local addrToTimeRelatedGameCoreSubStruct = core.readInteger(addrToPlaceTickComputeSkip + 3)
   
+  local addrToPlaceLoopControl = getAddress(
+    "A1 ? ? ? ? 03 C5 3B",
+    "'timeProvider' was unable to find the address to take control of the tick loop."
+  )
+  
   -- Position to detour to own code and override tick loop control
   -- can be a call (dirtied registers are unused in this position, but consider that a cmp func needs to be done for the loop condition
   -- might also change the loop condition to make it easier... (relative address is after all in second byte of jmp instruction and could stay
@@ -117,7 +122,7 @@ exports.enable = function(self, moduleConfig, globalConfig)
     addrOfStopwatchStartGetTime,
     {
       0xe8, createOffsetForRelativeCall(addrOfStopwatchStartGetTime, requireTable.funcAddress_GetMicrosecondsTime),
-      0x90
+      0x90,
     }
   )
 
@@ -125,7 +130,7 @@ exports.enable = function(self, moduleConfig, globalConfig)
     addrOfStopwatchStopGetTime,
     {
       0xe8, createOffsetForRelativeCall(addrOfStopwatchStopGetTime, requireTable.funcAddress_GetMicrosecondsTime),
-      0x90
+      0x90,
     }
   )
   
@@ -133,7 +138,7 @@ exports.enable = function(self, moduleConfig, globalConfig)
     addrOfBeforeGameTicksGetTime,
     {
       0xe8, createOffsetForRelativeCall(addrOfBeforeGameTicksGetTime, requireTable.funcAddress_FakeSaveTimeBeforeGameTicks),
-      0x90, 0x90
+      0x90, 0x90,
     }
   )
 
@@ -141,7 +146,7 @@ exports.enable = function(self, moduleConfig, globalConfig)
     addrOfAfterGameTicksGetTime,
     {
       0xe8, createOffsetForRelativeCall(addrOfAfterGameTicksGetTime, requireTable.funcAddress_FakeGetTimeUsedForGameTicks),
-      0x90, 0x90, 0x90
+      0x90, 0x90, 0x90,
     }
   )
   
@@ -181,13 +186,24 @@ exports.enable = function(self, moduleConfig, globalConfig)
       0x5e,
       0x5d,
       0x5b,
-      0xc2, 0x04, 00
+      0xc2, 0x04, 0x00,
     }
   )
   
   core.writeCode(
     requireTable.address_GameCoreTimeSubStruct,
     {addrToTimeRelatedGameCoreSubStruct}
+  )
+  
+  core.writeCode(
+    addrToPlaceLoopControl,
+    {
+      0xe8, createOffsetForRelativeCall(addrToPlaceLoopControl, requireTable.funcAddress_FakeLoopControl),
+      0x85, 0xc0, -- test eax, eax
+      0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+      0x90, 0x90, 0x90, 0x90, 0x90,
+      0x74, --  je (ZF = 1, happens if eax is 0)
+    }
   )
   
 end

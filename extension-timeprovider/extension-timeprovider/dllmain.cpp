@@ -96,12 +96,12 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetMillisecondsTime(lua_State *
 static DWORD timeBeforeGameTicks{};
 static DWORD timeUsedForGameTicks{};
 
-static void __stdcall FakeSaveTimeBeforeGameTicks()
+void __stdcall FakeSaveTimeBeforeGameTicks()
 {
   timeBeforeGameTicks = GetMicrosecondsTime();
 }
 
-static DWORD __stdcall FakeGetTimeUsedForGameTicks()
+DWORD __stdcall FakeGetTimeUsedForGameTicks()
 {
   timeUsedForGameTicks = GetMicrosecondsTime() - timeBeforeGameTicks;
   return timeUsedForGameTicks;
@@ -196,6 +196,12 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   // it needs to return something so that a opcode to set a flag can be run to continue the loop
 }
 
+bool FakeLoopControl()
+{
+  // false will continue with the next tick, true break the loop
+  return ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop;
+}
+
 
 // lua module load
 extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
@@ -224,6 +230,8 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   lua_setfield(L, -2, "funcAddress_FakeSaveTimeBeforeGameTicks");
   lua_pushinteger(L, (DWORD) FakeGetTimeUsedForGameTicks);
   lua_setfield(L, -2, "funcAddress_FakeGetTimeUsedForGameTicks");
+  lua_pushinteger(L, (DWORD) FakeLoopControl);
+  lua_setfield(L, -2, "funcAddress_FakeLoopControl");
 
   // return lua funcs
 

@@ -2,7 +2,7 @@
 
 #include "timeProviderHeader.h"
 
-/* objects */
+/* classes and internal functions */
 
 struct FakeGameSynchronyState
 {
@@ -26,6 +26,10 @@ struct FakeGameCoreTimeSubStruct
   int other[2]; // not interesting for here
   int singlePlayerGameSpeed;
 };
+
+void __stdcall FakeSaveTimeBeforeGameTicks();
+DWORD __stdcall FakeGetTimeUsedForGameTicks();
+bool FakeLoopControl();
 
 /* exports */
 
