@@ -203,6 +203,10 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   // it needs to return something so that a opcode to set a flag can be run to continue the loop
 }
 
+// without this adjustment, frames are more unstable, but dips not as sharp
+// with this adjustment it can reach moments of stable 60 fps, but dips will effect it constantly
+static int tickLoopCarry{};
+
 BOOL FakeLoopControl()
 {
   const DWORD lastDuration{ static_cast<DWORD>(*durationLastLoop) };
@@ -210,15 +214,21 @@ BOOL FakeLoopControl()
   {
     // break early if the loop takes too long
     const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
-    if (timeSpendOnTicks > 16666 - (trueDuration - timeUsedForGameTicks))
+    if (timeSpendOnTicks > 16666 - (trueDuration - timeUsedForGameTicks) + tickLoopCarry)
     {
-      timeCarry -= timeSpendOnTicks - (16666 - (trueDuration - timeUsedForGameTicks));
+      tickLoopCarry = -static_cast<int>(timeSpendOnTicks - (16666 - (trueDuration - timeUsedForGameTicks) + tickLoopCarry));
       return TRUE;
     }
   }
 
   // false will continue with the next tick, true break the loop
-  return ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop;
+
+  BOOL ret{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
+  if (ret)
+  {
+    tickLoopCarry = 0; // not really true, though
+  }
+  return ret;
 }
 
 
