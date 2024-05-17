@@ -164,8 +164,15 @@ static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct{ nullptr };
 static int timeCarry{};
 static int* durationLastLoop{ nullptr };
 
+static DWORD lastDurationCheck{};
+static DWORD trueDuration{};
+
 int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
+  const DWORD currentTimestamp{ GetMicrosecondsTime() };
+  trueDuration = lastDurationCheck ? currentTimestamp - lastDurationCheck : 0;
+  lastDurationCheck = currentTimestamp;
+
   // will do other side effects and check if ticks should be performed, non 0 (actual game speed) if yes
   const int currentGameSpeed{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
   if (!currentGameSpeed)
@@ -196,8 +203,20 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   // it needs to return something so that a opcode to set a flag can be run to continue the loop
 }
 
-bool FakeLoopControl()
+BOOL FakeLoopControl()
 {
+  const DWORD lastDuration{ static_cast<DWORD>(*durationLastLoop) };
+  if (trueDuration && lastDuration)
+  {
+    // break early if the loop takes too long
+    const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
+    if (timeSpendOnTicks > 16666 - (trueDuration - timeUsedForGameTicks))
+    {
+      timeCarry -= timeSpendOnTicks - (16666 - (trueDuration - timeUsedForGameTicks));
+      return TRUE;
+    }
+  }
+
   // false will continue with the next tick, true break the loop
   return ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop;
 }

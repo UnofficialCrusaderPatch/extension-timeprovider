@@ -29,7 +29,7 @@ struct FakeGameCoreTimeSubStruct
 
 void __stdcall FakeSaveTimeBeforeGameTicks();
 DWORD __stdcall FakeGetTimeUsedForGameTicks();
-bool FakeLoopControl();
+BOOL FakeLoopControl();
 
 /* exports */
 
