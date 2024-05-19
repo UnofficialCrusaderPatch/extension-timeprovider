@@ -164,15 +164,10 @@ static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct{ nullptr };
 static int timeCarry{};
 static int* durationLastLoop{ nullptr };
 
-static DWORD lastDurationCheck{};
-static DWORD trueDuration{};
+static int durationOfOneTick{ 0 };
 
 int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
-  const DWORD currentTimestamp{ GetMicrosecondsTime() };
-  trueDuration = lastDurationCheck ? currentTimestamp - lastDurationCheck : 0;
-  lastDurationCheck = currentTimestamp;
-
   // will do other side effects and check if ticks should be performed, non 0 (actual game speed) if yes
   const int currentGameSpeed{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
   if (!currentGameSpeed)
@@ -180,7 +175,7 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
     return 0;
   }
 
-  const int durationOfOneTick{ 1000000 / currentGameSpeed };
+  durationOfOneTick = 1000000 / currentGameSpeed;
 
   const int relativeTimeCarry{ timeCarry + (*durationLastLoop - durationOfOneTick) };
   timeCarry = relativeTimeCarry;
@@ -196,34 +191,64 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
     return relativeTimeCarry / durationOfOneTick + 1;
   }
   return 1;
-  // then clean the cod here, then test some stuff with full control again
-  // if nothing helps, take control of the executing tick loop, to break early if needed!;
-
-  // use position at 0057c3a5 and create a call to own code, the dirtied registers are not used,
-  // it needs to return something so that a opcode to set a flag can be run to continue the loop
 }
 
-// without this adjustment, frames are more unstable, but dips not as sharp
-// with this adjustment it can reach moments of stable 60 fps, but dips will effect it constantly
 static int tickLoopCarry{};
 
 BOOL FakeLoopControl()
 {
+  const int performendTicksThisLoop{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop };
+
   const DWORD lastDuration{ static_cast<DWORD>(*durationLastLoop) };
-  if (trueDuration && lastDuration)
+  if (lastDuration)
   {
+    /*
+      Uncapped does not work anymore.
+      The games loop before was actions based, which in case of uncapped frames lead to as many actions as needed.
+      Normally, this would (together with the increasing duration) escalate, but Firefly added some limiters.
+      Depending on the situation, 2, 3 or 11 actions were max per frame, so while uncapped would slow down, it could
+      not escalate like situations here, the games frames would just slow down a bit and potentially even recover.
+      Now, due to it being time based with the change, the only possible thing in this situation will be frame or no frame,
+      making the positive carry useless (like when capped fps reached its limit) and the game slower.
+      In short, with the change, the focus just went to fps.
+
+      Similar, if the loop becomes to expensive in total (thereddaemon: 1440p zoomed out on my laptop is too much and
+      it went under 60fps), the limit will still apply, and unlike before, the game will slow down to one action per loop.
+      Previously, it would try to compensate with up to 11 ticks.
+
+      It is not known which effect this would have in multiplayer.
+      If not overdone, the old catch up logic would likely prevent any action desync, but I have no idea how if would behave if one player
+      really slowed down... worst case, constant desync.
+      If this is the case, the simplest logic here would be to skip the loop duration mechanic in a MP case, which might be ok, since
+      then the stability of the connection would have more importance then the frames.
+
+      Important missing pieces:
+      - Is any heuristic possible to make the frame limit dynamic?
+        - Even if possible, this would not help with the multiplayer issue, since it would optimize for frames first.
+      - Handling uncapped frames? How would one do it? Maybe another logic similar to the original games one to handle this cases?
+      - How would multiplayer behave when one of the players is on constant slow down? How would one fix this?
+    */
+
     // break early if the loop takes too long
     const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
-    if (timeSpendOnTicks > 16666 - (trueDuration - timeUsedForGameTicks) + tickLoopCarry)
+    const int allowedTickTime{ 16666 - static_cast<int>(lastDuration - timeUsedForGameTicks) + tickLoopCarry };
+    if (allowedTickTime <= 0)
     {
-      tickLoopCarry = -static_cast<int>(timeSpendOnTicks - (16666 - (trueDuration - timeUsedForGameTicks) + tickLoopCarry));
+      tickLoopCarry = 0;
+      return TRUE;
+    }
+
+    if (timeSpendOnTicks > allowedTickTime)
+    {
+      const DWORD tickOvertime{ timeSpendOnTicks - allowedTickTime };
+      tickLoopCarry = -static_cast<int>(tickOvertime % allowedTickTime);
       return TRUE;
     }
   }
 
   // false will continue with the next tick, true break the loop
 
-  BOOL ret{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
+  BOOL ret{ performendTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
   if (ret)
   {
     tickLoopCarry = 0; // not really true, though
