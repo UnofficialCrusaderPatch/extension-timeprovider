@@ -227,6 +227,9 @@ BOOL FakeLoopControl()
         - Even if possible, this would not help with the multiplayer issue, since it would optimize for frames first.
       - Handling uncapped frames? How would one do it? Maybe another logic similar to the original games one to handle this cases?
       - How would multiplayer behave when one of the players is on constant slow down? How would one fix this?
+
+      Note:
+      - Loop logic could also just apply at a certain speed level, which would allow to avoid the multiplayer condition.
     */
 
     // break early if the loop takes too long
