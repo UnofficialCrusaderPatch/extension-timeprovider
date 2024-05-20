@@ -15,6 +15,17 @@ struct FakeGameSynchronyState
   int __thiscall detouredDetermineGameTicksToPerform(int currentPlayerSlotID);
 };
 
+struct FakeWindowAndDirectDraw
+{
+  using ActualInGameBltAndFlip = void (FakeWindowAndDirectDraw::*)(int unknown);
+
+  inline static ActualInGameBltAndFlip actualInGameBltAndFlip{ nullptr };
+
+  // funcs
+
+  void __thiscall detouredInGameBltAndFlip(int unknown);
+};
+
 struct FakeGameCoreTimeSubStruct
 {
   int gameSpeedMultiplicator; // will not be used
@@ -30,6 +41,7 @@ struct FakeGameCoreTimeSubStruct
 void __stdcall FakeSaveTimeBeforeGameTicks();
 DWORD __stdcall FakeGetTimeUsedForGameTicks();
 BOOL FakeLoopControl();
+void __stdcall FakeSaveTimeBeforeGameTicks();
 
 /* exports */
 

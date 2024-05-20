@@ -96,10 +96,11 @@ exports.enable = function(self, moduleConfig, globalConfig)
     "'timeProvider' was unable to find the address to take control of the tick loop."
   )
   
-  -- Position to detour to own code and override tick loop control
-  -- can be a call (dirtied registers are unused in this position, but consider that a cmp func needs to be done for the loop condition
-  -- might also change the loop condition to make it easier... (relative address is after all in second byte of jmp instruction and could stay
-  -- A1 ? ? ? ? 03 C5 3B
+  local addrOfCallToInGameBltAndFlip = getAddress(
+    "E8 ? ? ? ? B9 ? ? ? ? E8 ? ? ? ? 39 ? ? ? ? ? 75 3A",
+    "'timeProvider' was unable to find the address of the call to the render blt and flip call."
+  )
+  local addrOfInGameBltAndFlipFunc = core.readInteger(addrOfCallToInGameBltAndFlip + 1) + addrOfCallToInGameBltAndFlip + 5
   
   --[[ load module ]]--
   
@@ -204,6 +205,18 @@ exports.enable = function(self, moduleConfig, globalConfig)
       0x90, 0x90, 0x90, 0x90, 0x90,
       0x74, --  je (ZF = 1, happens if eax is 0)
     }
+  )
+  
+  core.writeCode(
+    addrOfCallToInGameBltAndFlip,
+    {
+      0xe8, createOffsetForRelativeCall(addrOfCallToInGameBltAndFlip, requireTable.funcAddress_FakeInGameBltAndFlip),
+    }
+  )
+  
+  core.writeCode(
+    requireTable.address_ActualInGameBltAndFlip,
+    {addrOfInGameBltAndFlipFunc}
   )
   
 end
