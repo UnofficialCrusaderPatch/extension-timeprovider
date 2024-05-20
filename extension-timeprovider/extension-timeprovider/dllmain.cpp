@@ -9,7 +9,7 @@
 #include <deque>
 #include <numeric>
 #include <algorithm>
-#include <array>
+#include <vector>
 
 
 /* export C */
@@ -110,19 +110,32 @@ DWORD __stdcall FakeGetTimeUsedForGameTicks()
 
 /* make slowdown stable */
 
-template<typename T, size_t _Size>
+template<typename T, size_t _Capacity>
 class HeuristicHelper
 {
 private:
   int currentArrayIndex{};
-  std::array<T, _Size> values{};
+  std::vector<T> values;
 
 public:
 
+  HeuristicHelper()
+  {
+    values.reserve(_Capacity);
+  }
+
   void pushValue(const int value)
   {
-    values[currentArrayIndex++] = value;
-    if (currentArrayIndex >= values.size())
+    if (values.size() < _Capacity)
+    {
+      values.push_back(value);
+    }
+    else
+    {
+      values[currentArrayIndex] = value;
+    }
+    ++currentArrayIndex;
+    if (currentArrayIndex >= _Capacity)
     {
       currentArrayIndex = 0;
     }
@@ -145,18 +158,28 @@ public:
       return 0.0;
     }
 
-    std::array<T, _Size> tmpArray{ values };
-    const size_t n = tmpArray.size() / 2;
-    std::nth_element(tmpArray.begin(), tmpArray.begin() + n, tmpArray.end());
-    if (tmpArray.size() % 2) {
-      return tmpArray[n];
+    std::vector<T> tmpVector{ values };
+    const size_t n = tmpVector.size() / 2;
+    std::nth_element(tmpVector.begin(), tmpVector.begin() + n, tmpVector.end());
+    if (tmpVector.size() % 2) {
+      return tmpVector[n];
     }
     else
     {
       // even sized vector -> average the two middle values
-      auto maxIt{ std::max_element(tmpArray.begin(), tmpArray.begin() + n) };
-      return (*maxIt + tmpArray[n]) / 2;
+      auto maxIt{ std::max_element(tmpVector.begin(), tmpVector.begin() + n) };
+      return (*maxIt + tmpVector[n]) / 2;
     }
+  }
+
+  T getMin()
+  {
+    return *std::min(values.begin(), values.end());
+  }
+
+  T getMax()
+  {
+    return *std::max(values.begin(), values.end());
   }
 };
 
@@ -165,6 +188,9 @@ static int timeCarry{};
 static int* durationLastLoop{ nullptr };
 
 static int durationOfOneTick{ 0 };
+
+static HeuristicHelper<int, 11>  durationCollector{};
+static int tickLoopCarry{};
 
 int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
@@ -176,6 +202,7 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   }
 
   durationOfOneTick = 1000000 / currentGameSpeed;
+  durationCollector.pushValue(*durationLastLoop + tickLoopCarry);
 
   const int relativeTimeCarry{ timeCarry + (*durationLastLoop - durationOfOneTick) };
   timeCarry = relativeTimeCarry;
@@ -193,13 +220,13 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   return 1;
 }
 
-static int tickLoopCarry{};
+static bool lastLoopFinished{ true };
 
 BOOL FakeLoopControl()
 {
-  const int performendTicksThisLoop{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop };
+  const bool loopFinished{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
 
-  const DWORD lastDuration{ static_cast<DWORD>(*durationLastLoop) };
+  const int lastDuration{ *durationLastLoop };
   if (lastDuration)
   {
     /*
@@ -230,33 +257,78 @@ BOOL FakeLoopControl()
 
       Note:
       - Loop logic could also just apply at a certain speed level, which would allow to avoid the multiplayer condition.
+      
+
+      WARNING: The logic has a big flaw:
+      The difference between timeUsedForGameTicks and lastDuration is not reliable.
+      VSync will pause the loop until it can put out the next frame.
+      This time is not used for computation and causes issues in the "available time" logic.
+      The "lastLoopfinished" heuristic does not help:
+      If a lot are requested, but it breaks early due to the reduced time, this will effect the next one, too:
+      -> Solution? Try to get the render pause time. Since this is the remaining available time in the game loop, not the other stuff.
     */
 
     // break early if the loop takes too long
     const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
-    const int allowedTickTime{ 16666 - static_cast<int>(lastDuration - timeUsedForGameTicks) + tickLoopCarry };
+    const int allowedTickTime{ 16666 - (lastLoopFinished ? 0 : lastDuration - static_cast<int>(timeUsedForGameTicks)) + tickLoopCarry };
     if (allowedTickTime <= 0)
     {
       tickLoopCarry = 0;
+      lastLoopFinished = false;
       return TRUE;
     }
 
-    if (timeSpendOnTicks > allowedTickTime)
+    if (timeSpendOnTicks > static_cast<DWORD>(allowedTickTime))
     {
       const DWORD tickOvertime{ timeSpendOnTicks - allowedTickTime };
       tickLoopCarry = -static_cast<int>(tickOvertime % allowedTickTime);
+      lastLoopFinished = false;
       return TRUE;
     }
   }
 
-  // false will continue with the next tick, true break the loop
-
-  BOOL ret{ performendTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
-  if (ret)
+  if (loopFinished)
   {
     tickLoopCarry = 0; // not really true, though
+    lastLoopFinished = true;
   }
-  return ret;
+  // false will continue with the next tick, true break the loop
+  return loopFinished;
+}
+
+BOOL FakeLoopControlDynamic()
+{
+  const bool loopFinished{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
+
+  const int lastDuration{ *durationLastLoop };
+  if (lastDuration)
+  {
+    // break early if the loop takes too long
+    const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
+    const int allowedTickTime{ durationCollector.getMedian() - (lastLoopFinished ? 0 : lastDuration - static_cast<int>(timeUsedForGameTicks)) + tickLoopCarry};
+    if (allowedTickTime <= 0)
+    {
+      tickLoopCarry = 0;
+      lastLoopFinished = false;
+      return TRUE;
+    }
+
+    if (timeSpendOnTicks > static_cast<DWORD>(allowedTickTime))
+    {
+      const DWORD tickOvertime{ timeSpendOnTicks - allowedTickTime };
+      tickLoopCarry = -static_cast<int>(tickOvertime % allowedTickTime);
+      lastLoopFinished = false;
+      return TRUE;
+    }
+  }
+
+  if (loopFinished)
+  {
+    tickLoopCarry = 0; // not really true, though
+    lastLoopFinished = true;
+  }
+  // false will continue with the next tick, true break the loop
+  return loopFinished;
 }
 
 
@@ -287,7 +359,7 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   lua_setfield(L, -2, "funcAddress_FakeSaveTimeBeforeGameTicks");
   lua_pushinteger(L, (DWORD) FakeGetTimeUsedForGameTicks);
   lua_setfield(L, -2, "funcAddress_FakeGetTimeUsedForGameTicks");
-  lua_pushinteger(L, (DWORD) FakeLoopControl);
+  lua_pushinteger(L, (DWORD) FakeLoopControlDynamic);
   lua_setfield(L, -2, "funcAddress_FakeLoopControl");
 
   // return lua funcs
