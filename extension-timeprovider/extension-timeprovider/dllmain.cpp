@@ -145,7 +145,7 @@ public:
   {
     if (values.empty())
     {
-      return 0.0;
+      return static_cast<T>(0);
     }
     return std::accumulate(values.begin(), values.end(), 0.0) / values.size();
   }
@@ -155,7 +155,7 @@ public:
   {
     if (values.empty())
     {
-      return 0.0;
+      return static_cast<T>(0);
     }
 
     std::vector<T> tmpVector{ values };
@@ -174,12 +174,14 @@ public:
 
   T getMin()
   {
-    return *std::min(values.begin(), values.end());
+    const auto res{ std::min(values.begin(), values.end()) };
+    return res != values.end() ? *res : 0;
   }
 
   T getMax()
   {
-    return *std::max(values.begin(), values.end());
+    const auto res{ std::max(values.begin(), values.end()) };
+    return res != values.end() ? *res : 0;
   }
 };
 
@@ -189,12 +191,40 @@ static int* durationLastLoop{ nullptr };
 
 static int durationOfOneTick{ 0 };
 
-static HeuristicHelper<int, 11>  durationCollector{};
+static HeuristicHelper<int, 11> durationCollector{};
 static int tickLoopCarry{};
 static int bltAndFlipDuration{};
 
+
+// try with blt and flip duration again, maybe more stable then game logic?
+static HeuristicHelper<int, 11> nonTickTimeCollector{};
+static bool lastLoopFinished{ true };
+
 int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
+  if (!lastLoopFinished)
+  {
+    int newNonTickTime{ *durationLastLoop - static_cast<int>(timeUsedForGameTicks) - nonTickTimeCollector.getAverage() };
+    if (newNonTickTime < 0)
+    {
+      nonTickTimeCollector.pushValue(0);
+    }
+    else
+    {
+      nonTickTimeCollector.pushValue(newNonTickTime);
+    }
+  } else {
+    int newNonTickTime{ nonTickTimeCollector.getAverage() - 100 };
+    if (newNonTickTime < 0)
+    {
+      nonTickTimeCollector.pushValue(0);
+    }
+    else
+    {
+      nonTickTimeCollector.pushValue(newNonTickTime);
+    }
+  }
+
   // will do other side effects and check if ticks should be performed, non 0 (actual game speed) if yes
   const int currentGameSpeed{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
   if (!currentGameSpeed)
@@ -220,6 +250,8 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   }
   return 1;
 }
+
+static HeuristicHelper<int, 11> bltAndFlipTimeRecorder{};
 
 BOOL FakeLoopControl()
 {
@@ -262,10 +294,11 @@ BOOL FakeLoopControl()
 
     // break early if the loop takes too long
     const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
-    const int allowedTickTime{ 16666 - (lastDuration - static_cast<int>(bltAndFlipDuration + timeUsedForGameTicks)) + tickLoopCarry };
+    const int allowedTickTime{ 16666 - nonTickTimeCollector.getAverage() * 2 + tickLoopCarry };
     if (allowedTickTime <= 0)
     {
       tickLoopCarry = 0;
+      lastLoopFinished = false;
       return TRUE;
     }
 
@@ -273,6 +306,7 @@ BOOL FakeLoopControl()
     {
       const DWORD tickOvertime{ timeSpendOnTicks - allowedTickTime };
       tickLoopCarry = -static_cast<int>(tickOvertime % allowedTickTime);
+      lastLoopFinished = false;
       return TRUE;
     }
   }
@@ -280,6 +314,7 @@ BOOL FakeLoopControl()
   if (loopFinished)
   {
     tickLoopCarry = 0; // not really true, though
+    lastLoopFinished = true;
   }
   // false will continue with the next tick, true break the loop
   return loopFinished;
@@ -322,6 +357,10 @@ void __thiscall FakeWindowAndDirectDraw::detouredInGameBltAndFlip(int unknown)
   const DWORD bltAndflipStartTime{ GetMicrosecondsTime() };
   (*this.*actualInGameBltAndFlip)(unknown);
   bltAndFlipDuration = GetMicrosecondsTime() - bltAndflipStartTime;
+  if (!lastLoopFinished)
+  {
+    bltAndFlipTimeRecorder.pushValue(bltAndFlipDuration);
+  }
 }
 
 
