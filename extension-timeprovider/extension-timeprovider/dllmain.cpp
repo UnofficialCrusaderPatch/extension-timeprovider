@@ -252,31 +252,6 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
     return 0;
   }
 
-  //if (!lastLoopFinished)
-  //{
-  //  int newNonTickTime{ *durationLastLoop - static_cast<int>(timeUsedForGameTicks) - nonTickTimeCollector.getAverage() };
-  //  if (newNonTickTime < 0)
-  //  {
-  //    nonTickTimeCollector.pushValue(0);
-  //  }
-  //  else
-  //  {
-  //    nonTickTimeCollector.pushValue(newNonTickTime);
-  //  }
-  //}
-  //else
-  //{
-  //  int newNonTickTime{ nonTickTimeCollector.getAverage() - 100 };
-  //  if (newNonTickTime < 0)
-  //  {
-  //    nonTickTimeCollector.pushValue(0);
-  //  }
-  //  else
-  //  {
-  //    nonTickTimeCollector.pushValue(newNonTickTime);
-  //  }
-  //}
-
   durationOfOneTick = 1000000 / currentGameSpeed;
   durationCollector.pushValue(gameLoopStopwatch->duration);
 
@@ -310,76 +285,76 @@ BOOL FakeLoopControl()
   const bool loopFinished{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
 
   const int lastDuration{ gameLoopStopwatch->duration };
-  if (lastDuration)
+  if (!lastDuration)
   {
-    /*
-      Uncapped does not work anymore.
-      The games loop before was actions based, which in case of uncapped frames lead to as many actions as needed.
-      Normally, this would (together with the increasing duration) escalate, but Firefly added some limiters.
-      Depending on the situation, 2, 3 or 11 actions were max per frame, so while uncapped would slow down, it could
-      not escalate like situations here, the games frames would just slow down a bit and potentially even recover.
-      Now, due to it being time based with the change, the only possible thing in this situation will be frame or no frame,
-      making the positive carry useless (like when capped fps reached its limit) and the game slower.
-      In short, with the change, the focus just went to fps.
+    return loopFinished; // should only happen once
+  }
+  /*
+    Uncapped does not work anymore.
+    The games loop before was actions based, which in case of uncapped frames lead to as many actions as needed.
+    Normally, this would (together with the increasing duration) escalate, but Firefly added some limiters.
+    Depending on the situation, 2, 3 or 11 actions were max per frame, so while uncapped would slow down, it could
+    not escalate like situations here, the games frames would just slow down a bit and potentially even recover.
+    Now, due to it being time based with the change, the only possible thing in this situation will be frame or no frame,
+    making the positive carry useless (like when capped fps reached its limit) and the game slower.
+    In short, with the change, the focus just went to fps.
 
-      Similar, if the loop becomes to expensive in total (thereddaemon: 1440p zoomed out on my laptop is too much and
-      it went under 60fps), the limit will still apply, and unlike before, the game will slow down to one action per loop.
-      Previously, it would try to compensate with up to 11 ticks.
+    Similar, if the loop becomes to expensive in total (thereddaemon: 1440p zoomed out on my laptop is too much and
+    it went under 60fps), the limit will still apply, and unlike before, the game will slow down to one action per loop.
+    Previously, it would try to compensate with up to 11 ticks.
 
-      It is not known which effect this would have in multiplayer.
-      If not overdone, the old catch up logic would likely prevent any action desync, but I have no idea how if would behave if one player
-      really slowed down... worst case, constant desync.
-      If this is the case, the simplest logic here would be to skip the loop duration mechanic in a MP case, which might be ok, since
-      then the stability of the connection would have more importance then the frames.
+    It is not known which effect this would have in multiplayer.
+    If not overdone, the old catch up logic would likely prevent any action desync, but I have no idea how if would behave if one player
+    really slowed down... worst case, constant desync.
+    If this is the case, the simplest logic here would be to skip the loop duration mechanic in a MP case, which might be ok, since
+    then the stability of the connection would have more importance then the frames.
 
-      Important missing pieces:
-      - Is any heuristic possible to make the frame limit dynamic?
-        - Even if possible, this would not help with the multiplayer issue, since it would optimize for frames first.
-      - Handling uncapped frames? How would one do it? Maybe another logic similar to the original games one to handle this cases?
-      - How would multiplayer behave when one of the players is on constant slow down? How would one fix this?
+    Important missing pieces:
+    - Is any heuristic possible to make the frame limit dynamic?
+      - Even if possible, this would not help with the multiplayer issue, since it would optimize for frames first.
+    - Handling uncapped frames? How would one do it? Maybe another logic similar to the original games one to handle this cases?
+    - How would multiplayer behave when one of the players is on constant slow down? How would one fix this?
 
-      Note:
-      - Loop logic could also just apply at a certain speed level, which would allow to avoid the multiplayer condition.
-      - The since the bltAndFlipDuration is used, the framerate seems more unstable. Maybe the actual flip needs to be used?
-        - looks like it
-    */
+    Note:
+    - Loop logic could also just apply at a certain speed level, which would allow to avoid the multiplayer condition.
+    - The since the bltAndFlipDuration is used, the framerate seems more unstable. Maybe the actual flip needs to be used?
+      - looks like it
+  */
 
 
-    if (allowedTickTime <= 0)
-    {
-      tickLoopCarry = 0;
-      lastLoopFinished = false;
-      return TRUE;
-    }
-    const DWORD positiveAllowedTickTime{ static_cast<DWORD>(allowedTickTime) };
+  if (allowedTickTime <= 0)
+  {
+    tickLoopCarry = 0;
+    lastLoopFinished = false;
+    return TRUE;
+  }
+  const DWORD positiveAllowedTickTime{ static_cast<DWORD>(allowedTickTime) };
 
-    // break early if the loop takes too long
-    const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
-    if (timeSpendOnTicks > positiveAllowedTickTime)
-    {
-      const DWORD tickOvertime{ timeSpendOnTicks - positiveAllowedTickTime };
-      // heuristic: focus to reduce time, not to add
-      tickLoopCarry = -static_cast<int>(std::min({ tickOvertime, actualLastAverageTimePerTick, positiveAllowedTickTime }));
-      lastLoopFinished = false;
-      return TRUE;
-    }
-
-    if (!loopFinished)
-    {
-      const DWORD expectedTimeSpendWithNextTick{ timeSpendOnTicks + actualLastAverageTimePerTick };
-      if (expectedTimeSpendWithNextTick > positiveAllowedTickTime)
-      {
-        // heuristic: focus to reduce time
-        tickLoopCarry = static_cast<int>(expectedTimeSpendWithNextTick - positiveAllowedTickTime);
-        lastLoopFinished = false;
-        return TRUE;
-      }
-    }
+  // break early if the loop takes too long
+  const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
+  if (timeSpendOnTicks > positiveAllowedTickTime)
+  {
+    const DWORD tickOvertime{ timeSpendOnTicks - positiveAllowedTickTime };
+    // heuristic: focus to reduce time, not to add
+    tickLoopCarry = -static_cast<int>(std::min({ tickOvertime, actualLastAverageTimePerTick, positiveAllowedTickTime }));
+    lastLoopFinished = false;
+    return TRUE;
   }
 
-  if (loopFinished)
+  if (!loopFinished)
   {
-    tickLoopCarry = 0; // not really true, though
+    const DWORD expectedTimeSpendWithNextTick{ timeSpendOnTicks + actualLastAverageTimePerTick };
+    if (expectedTimeSpendWithNextTick > positiveAllowedTickTime)
+    {
+      // heuristic: focus to reduce time
+      tickLoopCarry = static_cast<int>(expectedTimeSpendWithNextTick - positiveAllowedTickTime);
+      lastLoopFinished = false;
+      return TRUE;
+    }
+  }
+  else
+  {
+    tickLoopCarry = 0; // actually not really true
     lastLoopFinished = true;
   }
   // false will continue with the next tick, true break the loop
