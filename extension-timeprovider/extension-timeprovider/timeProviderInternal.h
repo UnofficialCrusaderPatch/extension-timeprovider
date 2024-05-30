@@ -4,6 +4,14 @@
 
 /* classes and internal functions */
 
+struct alignas(alignof(int)) CrusaderStopwatch
+{
+  int duration;
+  bool running;
+  DWORD startTime;
+  DWORD stopTime;
+};
+
 struct FakeGameSynchronyState
 {
   using ActualDetermineGameTicksToPerform = int (FakeGameSynchronyState::*)(int currentPlayerSlotID);

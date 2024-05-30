@@ -94,6 +94,7 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetMillisecondsTime(lua_State *
 /* time resolution increase helpers */
 
 static DWORD timeBeforeGameTicks{};
+static DWORD timeAfterGameTicks{};
 static DWORD timeUsedForGameTicks{};
 
 void __stdcall FakeSaveTimeBeforeGameTicks()
@@ -103,29 +104,47 @@ void __stdcall FakeSaveTimeBeforeGameTicks()
 
 DWORD __stdcall FakeGetTimeUsedForGameTicks()
 {
-  timeUsedForGameTicks = GetMicrosecondsTime() - timeBeforeGameTicks;
+  timeAfterGameTicks = GetMicrosecondsTime();
+  timeUsedForGameTicks = timeAfterGameTicks - timeBeforeGameTicks;
   return timeUsedForGameTicks;
 }
 
 
 /* make slowdown stable */
 
-template<typename T, size_t _Capacity>
+template<typename T, size_t _Capacity, bool _RestrictToCapacity = true>
 class HeuristicHelper
 {
 private:
-  int currentArrayIndex{};
+  int currentArrayIndex;
   std::vector<T> values;
 
 public:
 
   HeuristicHelper()
   {
+    clear();
+  }
+
+  void clear()
+  {
+    values.clear();
     values.reserve(_Capacity);
+
+    if constexpr (_RestrictToCapacity)
+    {
+      currentArrayIndex = 0;
+    }
   }
 
   void pushValue(const int value)
   {
+    if constexpr (!_RestrictToCapacity)
+    {
+      values.push_back(value);
+      return;
+    }
+
     if (values.size() < _Capacity)
     {
       values.push_back(value);
@@ -147,7 +166,7 @@ public:
     {
       return static_cast<T>(0);
     }
-    return std::accumulate(values.begin(), values.end(), 0.0) / values.size();
+    return std::accumulate(values.begin(), values.end(), static_cast<T>(0)) / values.size();
   }
 
   // source: https://stackoverflow.com/a/39487448
@@ -187,7 +206,7 @@ public:
 
 static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct{ nullptr };
 static int timeCarry{};
-static int* durationLastLoop{ nullptr };
+static CrusaderStopwatch* gameLoopStopwatch{ nullptr };
 
 static int durationOfOneTick{ 0 };
 
@@ -200,30 +219,31 @@ static int bltAndFlipDuration{};
 static HeuristicHelper<int, 11> nonTickTimeCollector{};
 static bool lastLoopFinished{ true };
 
+static int allowedTickTime{};
+static int lastDurationBetweenTicksAndRenderDone{};
+static HeuristicHelper<DWORD, 11> renderOffsetCollector{};
+static DWORD actualLastAverageTimePerTick{};
+
 int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int currentPlayerSlotID)
 {
-  if (!lastLoopFinished)
+  // setup loop values:
+
+  if (gameCoreTimeSubStruct->gameTicksLastLoop)
   {
-    int newNonTickTime{ *durationLastLoop - static_cast<int>(timeUsedForGameTicks) - nonTickTimeCollector.getAverage() };
-    if (newNonTickTime < 0)
+    if (!lastLoopFinished)
     {
-      nonTickTimeCollector.pushValue(0);
+      int lastRenderTime{ static_cast<int>(gameLoopStopwatch->stopTime - timeAfterGameTicks) - tickLoopCarry };
+      renderOffsetCollector.pushValue(lastRenderTime < 0 ? 0 : static_cast<int>(lastRenderTime));
     }
     else
     {
-      nonTickTimeCollector.pushValue(newNonTickTime);
+      renderOffsetCollector.pushValue(0);
     }
-  } else {
-    int newNonTickTime{ nonTickTimeCollector.getAverage() - 100 };
-    if (newNonTickTime < 0)
-    {
-      nonTickTimeCollector.pushValue(0);
-    }
-    else
-    {
-      nonTickTimeCollector.pushValue(newNonTickTime);
-    }
+
+    actualLastAverageTimePerTick = timeUsedForGameTicks / gameCoreTimeSubStruct->performedGameTicksThisLoop;
   }
+
+  // end setup loop values
 
   // will do other side effects and check if ticks should be performed, non 0 (actual game speed) if yes
   const int currentGameSpeed{ (*this.*actualDetermineGameTicksToPerform)(currentPlayerSlotID) };
@@ -232,10 +252,35 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
     return 0;
   }
 
-  durationOfOneTick = 1000000 / currentGameSpeed;
-  durationCollector.pushValue(*durationLastLoop);
+  //if (!lastLoopFinished)
+  //{
+  //  int newNonTickTime{ *durationLastLoop - static_cast<int>(timeUsedForGameTicks) - nonTickTimeCollector.getAverage() };
+  //  if (newNonTickTime < 0)
+  //  {
+  //    nonTickTimeCollector.pushValue(0);
+  //  }
+  //  else
+  //  {
+  //    nonTickTimeCollector.pushValue(newNonTickTime);
+  //  }
+  //}
+  //else
+  //{
+  //  int newNonTickTime{ nonTickTimeCollector.getAverage() - 100 };
+  //  if (newNonTickTime < 0)
+  //  {
+  //    nonTickTimeCollector.pushValue(0);
+  //  }
+  //  else
+  //  {
+  //    nonTickTimeCollector.pushValue(newNonTickTime);
+  //  }
+  //}
 
-  const int relativeTimeCarry{ timeCarry + (*durationLastLoop - durationOfOneTick) };
+  durationOfOneTick = 1000000 / currentGameSpeed;
+  durationCollector.pushValue(gameLoopStopwatch->duration);
+
+  const int relativeTimeCarry{ timeCarry + (static_cast<int>(gameLoopStopwatch->duration) - durationOfOneTick) };
   timeCarry = relativeTimeCarry;
 
   if (relativeTimeCarry < 0)
@@ -243,7 +288,14 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
     timeCarry = relativeTimeCarry + durationOfOneTick;
     return 0;
   }
-  else if (durationOfOneTick < relativeTimeCarry) // means more then one tick possible
+
+  // setup loop values:
+
+  allowedTickTime = 16666 - renderOffsetCollector.getAverage();
+
+  // end setup loop values
+
+  if (durationOfOneTick < relativeTimeCarry) // means more then one tick possible
   {
     timeCarry = relativeTimeCarry - (relativeTimeCarry / durationOfOneTick) * durationOfOneTick;
     return relativeTimeCarry / durationOfOneTick + 1;
@@ -257,7 +309,7 @@ BOOL FakeLoopControl()
 {
   const bool loopFinished{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
 
-  const int lastDuration{ *durationLastLoop };
+  const int lastDuration{ gameLoopStopwatch->duration };
   if (lastDuration)
   {
     /*
@@ -292,22 +344,36 @@ BOOL FakeLoopControl()
         - looks like it
     */
 
-    // break early if the loop takes too long
-    const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
-    const int allowedTickTime{ 16666 - nonTickTimeCollector.getAverage() * 2 + tickLoopCarry };
+
     if (allowedTickTime <= 0)
     {
       tickLoopCarry = 0;
       lastLoopFinished = false;
       return TRUE;
     }
+    const DWORD positiveAllowedTickTime{ static_cast<DWORD>(allowedTickTime) };
 
-    if (timeSpendOnTicks > static_cast<DWORD>(allowedTickTime))
+    // break early if the loop takes too long
+    const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
+    if (timeSpendOnTicks > positiveAllowedTickTime)
     {
-      const DWORD tickOvertime{ timeSpendOnTicks - allowedTickTime };
-      tickLoopCarry = -static_cast<int>(tickOvertime % allowedTickTime);
+      const DWORD tickOvertime{ timeSpendOnTicks - positiveAllowedTickTime };
+      // heuristic: focus to reduce time, not to add
+      tickLoopCarry = -static_cast<int>(std::min({ tickOvertime, actualLastAverageTimePerTick, positiveAllowedTickTime }));
       lastLoopFinished = false;
       return TRUE;
+    }
+
+    if (!loopFinished)
+    {
+      const DWORD expectedTimeSpendWithNextTick{ timeSpendOnTicks + actualLastAverageTimePerTick };
+      if (expectedTimeSpendWithNextTick > positiveAllowedTickTime)
+      {
+        // heuristic: focus to reduce time
+        tickLoopCarry = static_cast<int>(expectedTimeSpendWithNextTick - positiveAllowedTickTime);
+        lastLoopFinished = false;
+        return TRUE;
+      }
     }
   }
 
@@ -324,7 +390,7 @@ BOOL FakeLoopControlDynamic()
 {
   const bool loopFinished{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
 
-  const int lastDuration{ *durationLastLoop };
+  const int lastDuration{ gameLoopStopwatch->duration };
   if (lastDuration)
   {
     // break early if the loop takes too long
@@ -372,8 +438,8 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   // address
   lua_pushinteger(L, (DWORD) &FakeGameSynchronyState::actualDetermineGameTicksToPerform);
   lua_setfield(L, -2, "address_ActualDetermineGameTicksToPerform");
-  lua_pushinteger(L, (DWORD) &durationLastLoop);
-  lua_setfield(L, -2, "address_DurationLastLoop");
+  lua_pushinteger(L, (DWORD) &gameLoopStopwatch);
+  lua_setfield(L, -2, "address_GameLoopStopwatch");
   lua_pushinteger(L, (DWORD) &gameCoreTimeSubStruct);
   lua_setfield(L, -2, "address_GameCoreTimeSubStruct");
   lua_pushinteger(L, (DWORD) &FakeWindowAndDirectDraw::actualInGameBltAndFlip);

@@ -78,9 +78,9 @@ exports.enable = function(self, moduleConfig, globalConfig)
     "'timeProvider' was unable to find the address of the determine tick number function."
   )
   
-  local addrOfLastLoopDuration = getAddress(
+  local addrOfGameLoopStopwatch = getAddress(
     "8B ? ? ? ? ? 8B ? ? ? ? ? 2B D1 03 FA",
-    "'timeProvider' was unable to find the address of the last game loop duration.",
+    "'timeProvider' was unable to find the address of the game loop stopwatch struct.",
     function(foundAddress) return core.readInteger(foundAddress + 2) end
   )
   
@@ -174,8 +174,8 @@ exports.enable = function(self, moduleConfig, globalConfig)
   )
   
   core.writeCode(
-    requireTable.address_DurationLastLoop,
-    {addrOfLastLoopDuration}
+    requireTable.address_GameLoopStopwatch,
+    {addrOfGameLoopStopwatch}
   )
   
   core.writeCode(
