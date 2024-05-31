@@ -96,12 +96,6 @@ exports.enable = function(self, moduleConfig, globalConfig)
     "'timeProvider' was unable to find the address to take control of the tick loop."
   )
   
-  local addrOfCallToInGameBltAndFlip = getAddress(
-    "E8 ? ? ? ? B9 ? ? ? ? E8 ? ? ? ? 39 ? ? ? ? ? 75 3A",
-    "'timeProvider' was unable to find the address of the call to the render blt and flip call."
-  )
-  local addrOfInGameBltAndFlipFunc = core.readInteger(addrOfCallToInGameBltAndFlip + 1) + addrOfCallToInGameBltAndFlip + 5
-  
   --[[ load module ]]--
   
   local requireTable = require("timeprovider.dll") -- loads the dll in memory and runs luaopen_timeprovider
@@ -205,18 +199,6 @@ exports.enable = function(self, moduleConfig, globalConfig)
       0x90, 0x90, 0x90, 0x90, 0x90,
       0x74, --  je (ZF = 1, happens if eax is 0)
     }
-  )
-  
-  core.writeCode(
-    addrOfCallToInGameBltAndFlip,
-    {
-      0xe8, createOffsetForRelativeCall(addrOfCallToInGameBltAndFlip, requireTable.funcAddress_FakeInGameBltAndFlip),
-    }
-  )
-  
-  core.writeCode(
-    requireTable.address_ActualInGameBltAndFlip,
-    {addrOfInGameBltAndFlipFunc}
   )
   
 end

@@ -2,7 +2,7 @@
 
 #include "timeProviderHeader.h"
 
-/* classes and internal functions */
+/* game classes and internal functions */
 
 struct alignas(alignof(int)) CrusaderStopwatch
 {
@@ -23,17 +23,6 @@ struct FakeGameSynchronyState
   int __thiscall detouredDetermineGameTicksToPerform(int currentPlayerSlotID);
 };
 
-struct FakeWindowAndDirectDraw
-{
-  using ActualInGameBltAndFlip = void (FakeWindowAndDirectDraw::*)(int unknown);
-
-  inline static ActualInGameBltAndFlip actualInGameBltAndFlip{ nullptr };
-
-  // funcs
-
-  void __thiscall detouredInGameBltAndFlip(int unknown);
-};
-
 struct FakeGameCoreTimeSubStruct
 {
   int gameSpeedMultiplicator; // will not be used
@@ -50,6 +39,17 @@ void __stdcall FakeSaveTimeBeforeGameTicks();
 DWORD __stdcall FakeGetTimeUsedForGameTicks();
 BOOL FakeLoopControl();
 void __stdcall FakeSaveTimeBeforeGameTicks();
+
+/* other classes and internal functions */
+
+enum class LimiterType : int
+{
+  VANILLA = 0,
+  MAX_ACTIONS = 1,
+  FIXED_FLOOR = 2,
+  DYNAMIC = 3,
+  NO_LIMITER = 4,
+};
 
 /* exports */
 

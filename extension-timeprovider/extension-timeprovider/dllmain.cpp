@@ -208,19 +208,9 @@ static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct{ nullptr };
 static int timeCarry{};
 static CrusaderStopwatch* gameLoopStopwatch{ nullptr };
 
-static int durationOfOneTick{ 0 };
-
-static HeuristicHelper<int, 11> durationCollector{};
 static int tickLoopCarry{};
-static int bltAndFlipDuration{};
-
-
-// try with blt and flip duration again, maybe more stable then game logic?
-static HeuristicHelper<int, 11> nonTickTimeCollector{};
 static bool lastLoopFinished{ true };
-
 static int allowedTickTime{};
-static int lastDurationBetweenTicksAndRenderDone{};
 static HeuristicHelper<DWORD, 11> renderOffsetCollector{};
 static DWORD actualLastAverageTimePerTick{};
 
@@ -252,9 +242,7 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
     return 0;
   }
 
-  durationOfOneTick = 1000000 / currentGameSpeed;
-  durationCollector.pushValue(gameLoopStopwatch->duration);
-
+  const int durationOfOneTick = 1000000 / currentGameSpeed;
   const int relativeTimeCarry{ timeCarry + (static_cast<int>(gameLoopStopwatch->duration) - durationOfOneTick) };
   timeCarry = relativeTimeCarry;
 
@@ -277,8 +265,6 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   }
   return 1;
 }
-
-static HeuristicHelper<int, 11> bltAndFlipTimeRecorder{};
 
 BOOL FakeLoopControl()
 {
@@ -361,49 +347,6 @@ BOOL FakeLoopControl()
   return loopFinished;
 }
 
-BOOL FakeLoopControlDynamic()
-{
-  const bool loopFinished{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
-
-  const int lastDuration{ gameLoopStopwatch->duration };
-  if (lastDuration)
-  {
-    // break early if the loop takes too long
-    const DWORD timeSpendOnTicks{ GetMicrosecondsTime() - timeBeforeGameTicks };
-    const int allowedTickTime{ durationCollector.getMedian() - (lastDuration - static_cast<int>(bltAndFlipDuration)) + tickLoopCarry};
-    if (allowedTickTime <= 0)
-    {
-      tickLoopCarry = 0;
-      return TRUE;
-    }
-
-    if (timeSpendOnTicks > static_cast<DWORD>(allowedTickTime))
-    {
-      const DWORD tickOvertime{ timeSpendOnTicks - allowedTickTime };
-      tickLoopCarry = -static_cast<int>(tickOvertime % allowedTickTime);
-      return TRUE;
-    }
-  }
-
-  if (loopFinished)
-  {
-    tickLoopCarry = 0; // not really true, though
-  }
-  // false will continue with the next tick, true break the loop
-  return loopFinished;
-}
-
-void __thiscall FakeWindowAndDirectDraw::detouredInGameBltAndFlip(int unknown)
-{
-  const DWORD bltAndflipStartTime{ GetMicrosecondsTime() };
-  (*this.*actualInGameBltAndFlip)(unknown);
-  bltAndFlipDuration = GetMicrosecondsTime() - bltAndflipStartTime;
-  if (!lastLoopFinished)
-  {
-    bltAndFlipTimeRecorder.pushValue(bltAndFlipDuration);
-  }
-}
-
 
 // lua module load
 extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
@@ -417,8 +360,6 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   lua_setfield(L, -2, "address_GameLoopStopwatch");
   lua_pushinteger(L, (DWORD) &gameCoreTimeSubStruct);
   lua_setfield(L, -2, "address_GameCoreTimeSubStruct");
-  lua_pushinteger(L, (DWORD) &FakeWindowAndDirectDraw::actualInGameBltAndFlip);
-  lua_setfield(L, -2, "address_ActualInGameBltAndFlip");
 
   // simple replace
   auto detouredDetermineGameTicksToPerform{ &FakeGameSynchronyState::detouredDetermineGameTicksToPerform };
@@ -426,9 +367,6 @@ extern "C" __declspec(dllexport) int __cdecl luaopen_timeprovider(lua_State * L)
   lua_setfield(L, -2, "funcAddress_DetouredDetermineGameTicksToPerform");
   lua_pushinteger(L, (DWORD) GetMillisecondsTime);
   lua_setfield(L, -2, "funcAddress_GetMillisecondsTime");
-  auto detouredInGameBltAndFlip{ &FakeWindowAndDirectDraw::detouredInGameBltAndFlip };
-  lua_pushinteger(L, *(DWORD*) &detouredInGameBltAndFlip);
-  lua_setfield(L, -2, "funcAddress_FakeInGameBltAndFlip");
 
   // call addresses to use
   lua_pushinteger(L, (DWORD) GetMicrosecondsTime);
