@@ -204,6 +204,14 @@ public:
   }
 };
 
+static const int MAX_VANILLA_SPEED{ 90 };
+
+// for dev
+static LimiterType limiterType{ LimiterType::FIXED_FLOOR };
+static int maxNumerOfActionsPerLoop{ 11 }; // vanilla value
+static int minMicrosecondsLoopDuration{ 1000000 / 33 }; // to keep 30 frames as good as possible 
+static bool isVanillaLimiterGamespeed{};
+
 static FakeGameCoreTimeSubStruct* gameCoreTimeSubStruct{ nullptr };
 static int timeCarry{};
 static CrusaderStopwatch* gameLoopStopwatch{ nullptr };
@@ -220,14 +228,17 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
 
   if (gameCoreTimeSubStruct->gameTicksLastLoop)
   {
-    if (!lastLoopFinished)
+    if (limiterType == LimiterType::FIXED_FLOOR)
     {
-      int lastRenderTime{ static_cast<int>(gameLoopStopwatch->stopTime - timeAfterGameTicks) - tickLoopCarry };
-      renderOffsetCollector.pushValue(lastRenderTime < 0 ? 0 : static_cast<int>(lastRenderTime));
-    }
-    else
-    {
-      renderOffsetCollector.pushValue(0);
+      if (!lastLoopFinished)
+      {
+        int lastRenderTime{ static_cast<int>(gameLoopStopwatch->stopTime - timeAfterGameTicks) - tickLoopCarry };
+        renderOffsetCollector.pushValue(lastRenderTime < 0 ? 0 : static_cast<int>(lastRenderTime));
+      }
+      else
+      {
+        renderOffsetCollector.pushValue(0);
+      }
     }
 
     actualLastAverageTimePerTick = timeUsedForGameTicks / gameCoreTimeSubStruct->performedGameTicksThisLoop;
@@ -241,6 +252,7 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
   {
     return 0;
   }
+  isVanillaLimiterGamespeed = currentGameSpeed <= 90;
 
   const int durationOfOneTick = 1000000 / currentGameSpeed;
   const int relativeTimeCarry{ timeCarry + (static_cast<int>(gameLoopStopwatch->duration) - durationOfOneTick) };
@@ -252,11 +264,35 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
     return 0;
   }
 
-  // setup loop values:
-
-  allowedTickTime = 16666 - renderOffsetCollector.getAverage();
-
-  // end setup loop values
+  switch (isVanillaLimiterGamespeed ? LimiterType::VANILLA : limiterType)
+  {
+    // roughly, it is not a perfect copy of the algorithm
+    case LimiterType::VANILLA:
+      if (durationOfOneTick * 2 <= relativeTimeCarry)
+      {
+        if (static_cast<DWORD>(durationOfOneTick) < actualLastAverageTimePerTick)
+        {
+          timeCarry = 0;
+          return 2;
+        }
+        if (static_cast<DWORD>((durationOfOneTick * 7) / 10) < actualLastAverageTimePerTick)
+        {
+          timeCarry = 0;
+          return 3;
+        }
+      }
+      [[fallthrough]];  // intended, since next also last step of vanilla
+    case LimiterType::MAX_ACTIONS:
+      if (durationOfOneTick * (maxNumerOfActionsPerLoop - 1) < relativeTimeCarry)
+      {
+        timeCarry = 0;
+        return maxNumerOfActionsPerLoop;
+      }
+      break;
+    case LimiterType::FIXED_FLOOR:
+      allowedTickTime = minMicrosecondsLoopDuration - renderOffsetCollector.getAverage();
+      break;
+  }
 
   if (durationOfOneTick < relativeTimeCarry) // means more then one tick possible
   {
@@ -270,11 +306,18 @@ BOOL FakeLoopControl()
 {
   const bool loopFinished{ ++gameCoreTimeSubStruct->performedGameTicksThisLoop >= gameCoreTimeSubStruct->gameTicksThisLoop };
 
+  if (limiterType != LimiterType::FIXED_FLOOR || isVanillaLimiterGamespeed)
+  {
+    lastLoopFinished = loopFinished; // needed to handle vanilla / limiter switching case
+    return loopFinished;
+  }
+
   const int lastDuration{ gameLoopStopwatch->duration };
   if (!lastDuration)
   {
     return loopFinished; // should only happen once
   }
+
   /*
     Uncapped does not work anymore.
     The games loop before was actions based, which in case of uncapped frames lead to as many actions as needed.
