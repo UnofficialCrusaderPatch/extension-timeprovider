@@ -1,0 +1,46 @@
+specification-version: 1.0.0
+options:
+- display: GroupBox
+  header: '{{general}}'
+  text: '{{general_descr}}'
+  category: ['{{qol}}']
+  children:
+
+    - url: timeprovider.limiterType
+      header: '{{limiterType}}'
+      text: '{{limiterType_descr}}'
+      hasHeader: true
+      display: RadioGroup
+      contents:
+        choices:
+        - name: vanilla
+          text: '{{limiterType_vanilla}}'
+        - name: maxActionsPerLoop
+          text: '{{limiterType_maxActionsPerLoop}}'
+        - name: fixedFpsFloor
+          text: '{{limiterType_fixedFpsFloor}}'
+        - name: noLimiter
+          text: '{{limiterType_noLimiter}}'
+        value: vanilla
+        
+    - url: timeprovider.maxNumberOfActionsPerLoop
+      header: '{{maxNumberOfActionsPerLoop}}'
+      text: '{{maxNumberOfActionsPerLoop_descr}}'
+      enabled: timeprovider.limiterType == "maxActionsPerLoop"
+      display: Number
+      contents:
+        type: integer
+        value: 11
+        min: 1
+        max: 10000
+        
+    - url: timeprovider.minFramesPerSecond
+      header: '{{minFramesPerSecond}}'
+      text: '{{minFramesPerSecond_descr}}'
+      enabled: timeprovider.limiterType == "fixedFpsFloor"
+      display: Number
+      contents:
+        type: integer
+        value: 33
+        min: 1
+        max: 10000
