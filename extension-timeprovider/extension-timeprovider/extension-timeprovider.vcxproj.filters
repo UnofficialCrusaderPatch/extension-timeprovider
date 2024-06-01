@@ -27,6 +27,9 @@
     <ClInclude Include="timeProviderInternal.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="heuristicHelper.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "timeProviderHeader.h"
+#include "heuristicHelper.h"
 
 /* game classes and internal functions */
 
@@ -42,6 +43,8 @@ void __stdcall FakeSaveTimeBeforeGameTicks();
 
 /* other classes and internal functions */
 
+const int MAX_VANILLA_SPEED{ 90 };
+
 enum class LimiterType : int
 {
   VANILLA = 0,
@@ -49,6 +52,28 @@ enum class LimiterType : int
   FIXED_FLOOR = 2,
   DYNAMIC = 3,
   NO_LIMITER = 4,
+};
+
+// set to defaults
+struct LoopControlSettings
+{
+  LimiterType limiterType{ LimiterType::VANILLA };
+  int maxNumerOfActionsPerLoop{ 11 }; // vanilla value
+  int minMicrosecondsLoopDuration{ 1000000 / 33 }; // to keep 30 frames as good as possible 
+};
+
+struct LoopControlValues
+{
+  bool isVanillaLimiterGamespeed{};
+  DWORD timeBeforeGameTicks{};
+  DWORD timeAfterGameTicks{};
+  DWORD timeUsedForGameTicks{};
+  DWORD actualLastAverageTimePerTick{};
+  int timeLoopCarry{};
+  int tickLoopCarry{};
+  bool lastTickLoopFinished{ true };
+  int allowedTickTime{};
+  HeuristicHelper<DWORD, 11> renderOffsetCollector{};
 };
 
 /* exports */
@@ -64,3 +89,7 @@ extern "C" __declspec(dllexport) int __cdecl lua_GetFullNanosecondsTime(lua_Stat
 extern "C" __declspec(dllexport) int __cdecl lua_GetNanosecondsTime(lua_State * L);
 extern "C" __declspec(dllexport) int __cdecl lua_GetMicrosecondsTime(lua_State * L);
 extern "C" __declspec(dllexport) int __cdecl lua_GetMillisecondsTime(lua_State * L);
+
+extern "C" __declspec(dllexport) int __cdecl lua_SetLimiterType(lua_State * L);
+extern "C" __declspec(dllexport) int __cdecl lua_SetMaxNumberOfActionsPerLoop(lua_State * L);
+extern "C" __declspec(dllexport) int __cdecl lua_SetMinFramesPerSecond(lua_State * L);

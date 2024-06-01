@@ -201,6 +201,28 @@ exports.enable = function(self, moduleConfig, globalConfig)
     }
   )
   
+  --[[ apply config ]]--
+  
+  local LIMITER_TYPE = {
+    vanilla             = 0,
+    maxActionsPerLoop   = 1,
+    fixedFpsFloor       = 2,
+    dynamicFps          = 3,
+    noLimiter           = 4,
+  }
+  
+  if moduleConfig["limiterType"] then
+    requireTable.lua_SetLimiterType(LIMITER_TYPE[moduleConfig["limiterType"]])
+  end
+  
+  if moduleConfig["maxNumberOfActionsPerLoop"] then
+    requireTable.lua_SetMaxNumberOfActionsPerLoop(moduleConfig["maxNumberOfActionsPerLoop"])
+  end
+  
+  if moduleConfig["minFramesPerSecond"] then
+    requireTable.lua_SetMinFramesPerSecond(moduleConfig["minFramesPerSecond"])
+  end
+  
 end
 
 exports.disable = function(self, moduleConfig, globalConfig) error("not implemented") end
