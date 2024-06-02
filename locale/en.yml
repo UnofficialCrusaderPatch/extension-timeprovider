@@ -1,0 +1,43 @@
+qol: Quality of Life
+general: Time Provider
+general_descr: "This modules passive effect is increasing the general time resolution of the main game loop from milliseconds to microseconds, so the higher game speed settings will transition more smoothly.
+  Additionally it allows to configure how the game should handle game speed settings that the game can not keep up with.
+  
+  Note that the limiters only apply over 90 game speed. Vanilla speeds will always use the vanilla limiters to stay compatible for multiplayer, so there can be a harsh transition when the game speed is increased over 90.
+  Only one limiter type can be selected.
+  
+  
+  The approaches have roughly two different interests. They can be action- or FPS-focused.
+  
+  Action-focused limiters try to perform the requested game ticks per loop with some restrictions and mostly ignore the resulting frames per second.
+  
+  FPS-focused limiters try the inverse and will reduce the number of actions per loop to keep the FPS up."
+
+limiterType_vanilla: "**Vanilla (Action-focused)**
+
+  Vanilla essentially caps at 11 game ticks per frame. However, should the actual game tick time be bigger then actually needed by the speed setting, then it will slow down to 2 or 3 actions.
+  
+  A good setting if the game runs with uncapped frames without VSync."
+limiterType_maxActionsPerLoop: "**Restrict Game Ticks per Frame (Action-focused)**
+
+  Similar to vanilla a setting that allows to configure the maximum game ticks per frame. It also does not possess the slow down cases of vanilla.
+  
+  Recommended setting if the game runs with uncapped frames without VSync."
+limiterType_fixedFpsFloor: "**Minimum Frames per Second (Frame-focused)**
+
+  The game will allow the requested game ticks as good as possible. If the resulting frame rate sinks bellow the set minimum, the game ticks are interrupted to keep the FPS up.
+  Due to some averaging needed in the computation, short game tick slow downs despite enough computing resources might by encountered. Recovery usually happens quickly or can be forced by reducing the speed.
+  It is especially recommended to set the speed in such a way that the limiter has not to act all the time. 
+  
+  Recommended setting if the game runs with capped frames using VSync, otherwise the highest speeds are not possible due to the limited frames."
+
+limiterType_noLimiter: "**No Limiter (Action-focused, WARNING: NOT RECOMMENDED)**
+
+  The game always tries to perform all actions requested by the game speed and will try to catch up.
+  
+  If the computer is not fast enough, the situation will escalate and the game will essentially freeze."
+
+maxNumberOfActionsPerLoop_descr: The maximum number of game ticks to perform during one frame if the limiter restricts the actions per frame.
+minFramesPerSecond_descr: "The minimum number of frames allowed by the minimum frame limiter before the game tries to reduce the game ticks per frame to keep them up.
+
+  Should not exceed the possible FPS, for example the display frequency if VSync is used, since the game would then set the possible game ticks to 1 in an attempt to raise the frame rate once the limiter springs into action."

@@ -7,9 +7,6 @@ options:
   children:
 
     - url: timeprovider.limiterType
-      header: '{{limiterType}}'
-      text: '{{limiterType_descr}}'
-      hasHeader: true
       display: RadioGroup
       contents:
         choices:
@@ -24,7 +21,6 @@ options:
         value: vanilla
         
     - url: timeprovider.maxNumberOfActionsPerLoop
-      header: '{{maxNumberOfActionsPerLoop}}'
       text: '{{maxNumberOfActionsPerLoop_descr}}'
       enabled: timeprovider.limiterType == "maxActionsPerLoop"
       display: Number
@@ -35,7 +31,6 @@ options:
         max: 10000
         
     - url: timeprovider.minFramesPerSecond
-      header: '{{minFramesPerSecond}}'
       text: '{{minFramesPerSecond_descr}}'
       enabled: timeprovider.limiterType == "fixedFpsFloor"
       display: Number
