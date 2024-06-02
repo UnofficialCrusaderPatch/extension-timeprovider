@@ -51,7 +51,7 @@ exports.enable = function(self, moduleConfig, globalConfig)
   )
   
   local addrOfBeforeGameTicksGetTime = getAddress(
-    "FF D7 A3 CC 7D FE 01",
+    "FF D7 A3 ? ? ? ? 39 1D ? ? ? ? 89 1D",
     "'timeProvider' was unable to find the address for 'timeGetTime' before the game ticks loop."
   )
   
@@ -69,7 +69,7 @@ exports.enable = function(self, moduleConfig, globalConfig)
   )
   
   local addrOfCallToDetermineTickFunc = getAddress(
-    "E8 ? ? ? ? B9 ? ? ? ? A3 C0 7D FE 01",
+    "E8 ? ? ? ? B9 ? ? ? ? A3 ? ? ? ? e8 ? ? ? ? b9",
     "'timeProvider' was unable to find the address for the call to the determine tick number function."
   )
   
