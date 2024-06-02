@@ -16,7 +16,7 @@ namespace TimeProviderHeader
   using FuncGetMicrosecondsTime = DWORD(__stdcall*)();
   using FuncGetMillisecondsTime = DWORD(__stdcall*)();
 
-  inline constexpr char const* NAME_VERSION{ "0.0.1" };
+  inline constexpr char const* NAME_VERSION{ "0.1.0" };
   inline constexpr char const* NAME_MODULE{ "timeprovider" };
   inline constexpr char const* NAME_LIBRARY{ "timeprovider.dll" };
 

@@ -13,17 +13,17 @@ general_descr: "This modules passive effect is increasing the general time resol
   
   FPS-focused limiters try the inverse and will reduce the number of actions per loop to keep the FPS up."
 
-limiterType_vanilla: "**Vanilla (Action-focused)**
+limiterType_vanilla: "** Vanilla (Action-focused) **
 
   Vanilla essentially caps at 11 game ticks per frame. However, should the actual game tick time be bigger then actually needed by the speed setting, then it will slow down to 2 or 3 actions.
   
   A good setting if the game runs with uncapped frames without VSync."
-limiterType_maxActionsPerLoop: "**Restrict Game Ticks per Frame (Action-focused)**
+limiterType_maxActionsPerLoop: "** Restrict Game Ticks per Frame (Action-focused) **
 
   Similar to vanilla a setting that allows to configure the maximum game ticks per frame. It also does not possess the slow down cases of vanilla.
   
   Recommended setting if the game runs with uncapped frames without VSync."
-limiterType_fixedFpsFloor: "**Minimum Frames per Second (Frame-focused)**
+limiterType_fixedFpsFloor: "** Minimum Frames per Second (Frame-focused) **
 
   The game will allow the requested game ticks as good as possible. If the resulting frame rate sinks bellow the set minimum, the game ticks are interrupted to keep the FPS up.
   Due to some averaging needed in the computation, short game tick slow downs despite enough computing resources might by encountered. Recovery usually happens quickly or can be forced by reducing the speed.
@@ -31,7 +31,7 @@ limiterType_fixedFpsFloor: "**Minimum Frames per Second (Frame-focused)**
   
   Recommended setting if the game runs with capped frames using VSync, otherwise the highest speeds are not possible due to the limited frames."
 
-limiterType_noLimiter: "**No Limiter (Action-focused, WARNING: NOT RECOMMENDED)**
+limiterType_noLimiter: "** No Limiter (Action-focused, WARNING: NOT RECOMMENDED) **
 
   The game always tries to perform all actions requested by the game speed and will try to catch up.
   
