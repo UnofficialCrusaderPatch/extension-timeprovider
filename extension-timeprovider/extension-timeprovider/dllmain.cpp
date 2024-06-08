@@ -267,7 +267,14 @@ extern "C" __declspec(dllexport) int __cdecl lua_SetLimiterType(lua_State * L)
   {
     luaL_error(L, "[timeprovider]: lua_SetLimiterType: Invalid limiter type value.");
   }
-  loopControlSettings.limiterType = static_cast<LimiterType>(limiterValue);
+
+  const LimiterType limiterType{ static_cast<LimiterType>(limiterValue) };
+  if (limiterType == LimiterType::DYNAMIC)
+  {
+    luaL_error(L, "[timeprovider]: lua_SetLimiterType: 'DYNAMIC' frame duration limiter not supported. Was unable to get the loop stable. Any ideas and help appreciated!");
+  }
+
+  loopControlSettings.limiterType = limiterType;
   return 0;
 }
 
