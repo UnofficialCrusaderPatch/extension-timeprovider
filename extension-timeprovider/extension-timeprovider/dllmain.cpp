@@ -114,6 +114,8 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
 
   if (gameCoreTimeSubStruct->gameTicksLastLoop)
   {
+    loopControlValues.actualLastAverageTimePerTick = loopControlValues.timeUsedForGameTicks / gameCoreTimeSubStruct->performedGameTicksThisLoop;
+
     if (loopControlSettings.limiterType == LimiterType::FIXED_FLOOR)
     {
       if (!loopControlValues.lastTickLoopFinished)
@@ -125,9 +127,9 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
       {
         loopControlValues.renderOffsetCollector.pushValue(0);
       }
-    }
 
-    loopControlValues.actualLastAverageTimePerTick = loopControlValues.timeUsedForGameTicks / gameCoreTimeSubStruct->performedGameTicksThisLoop;
+      loopControlValues.lastAverageTimePerTickCollector.pushValue(loopControlValues.actualLastAverageTimePerTick);
+    }
   }
 
   // end setup loop values
@@ -177,6 +179,7 @@ int __thiscall FakeGameSynchronyState::detouredDetermineGameTicksToPerform(int c
       break;
     case LimiterType::FIXED_FLOOR:
       loopControlValues.allowedTickTime = loopControlSettings.minMicrosecondsLoopDuration - loopControlValues.renderOffsetCollector.getAverage();
+      loopControlValues.lastAverageTimePerTickMedian = loopControlValues.lastAverageTimePerTickCollector.getMedian();
       break;
   }
 
@@ -218,14 +221,14 @@ BOOL FakeLoopControl()
   {
     const DWORD tickOvertime{ timeSpendOnTicks - positiveAllowedTickTime };
     // heuristic: focus to reduce time, not to add
-    loopControlValues.tickLoopCarry = -static_cast<int>(std::min({ tickOvertime, loopControlValues.actualLastAverageTimePerTick, positiveAllowedTickTime }));
+    loopControlValues.tickLoopCarry = -static_cast<int>(std::min({ tickOvertime, loopControlValues.lastAverageTimePerTickMedian, positiveAllowedTickTime }));
     loopControlValues.lastTickLoopFinished = false;
     return TRUE;
   }
 
   if (!loopFinished)
   {
-    const DWORD expectedTimeSpendWithNextTick{ timeSpendOnTicks + loopControlValues.actualLastAverageTimePerTick };
+    const DWORD expectedTimeSpendWithNextTick{ timeSpendOnTicks + loopControlValues.lastAverageTimePerTickMedian };
     if (expectedTimeSpendWithNextTick > positiveAllowedTickTime)
     {
       // heuristic: focus to reduce time

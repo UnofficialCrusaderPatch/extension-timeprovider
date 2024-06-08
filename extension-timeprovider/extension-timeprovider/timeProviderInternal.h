@@ -69,6 +69,8 @@ struct LoopControlValues
   DWORD timeAfterGameTicks{};
   DWORD timeUsedForGameTicks{};
   DWORD actualLastAverageTimePerTick{};
+  HeuristicHelper<DWORD, 11> lastAverageTimePerTickCollector{};
+  DWORD lastAverageTimePerTickMedian{};
   int timeLoopCarry{};
   int tickLoopCarry{};
   bool lastTickLoopFinished{ true };
